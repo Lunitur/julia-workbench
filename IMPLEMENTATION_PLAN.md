@@ -1,8 +1,8 @@
 # Julia Workbench implementation plan
 
-Status: milestone 1 completed on 2026-10-01. The isolated server launcher,
-documentation prototype, real-server fixture and reproducible checks are
-implemented. Editing/UI implementation starts at milestone 2; Doom migration
+Status: milestones 1 and 2 completed on 2026-10-01. The isolated server launcher,
+documentation prototype, real-server fixture and editing major mode are
+implemented. Eglot/project integration starts at milestone 3; Doom migration
 remains pending until the replacement passes its later milestones.
 
 ## Progress
@@ -14,8 +14,14 @@ remains pending until the replacement passes its later milestones.
   Documentation lookup/search covers Base, macros/operators, selected project
   packages, Unicode and missing docs. See [COMPATIBILITY.md](COMPATIBILITY.md)
   for the capability table, timings, limitations and exact reproduction commands.
-- [ ] 2. Dependable editing (next).
-- [ ] 3. Eglot and project environment integration.
+- [x] 2. Dependable editing: `julia-workbench-mode`, `.jl`/shebang detection,
+  tree-sitter font locking, indentation, Imenu, definition navigation and
+  structural selection. Basic editing works without Julia, the grammar or a
+  server; grammar installation is explicit. Fourteen ERT fixtures cover the
+  installed Nix Julia grammar (0.25.0), Unicode, nested blocks/comments,
+  literals/interpolation, incomplete code and both availability paths.
+  See [README.md](README.md) for loading and reproduction commands.
+- [ ] 3. Eglot and project environment integration (next).
 - [ ] 4. Completion UI and Unicode CAPF.
 - [ ] 5. Asynchronous documentation UI, search and caching.
 - [ ] 6. Project REPL and evaluation.
@@ -119,6 +125,15 @@ any unsupported feature clearly identified.
 
 Exit criterion: reliable editing fixtures and usable buffers even when Julia,
 the grammar or the server is unavailable.
+
+Implemented in `julia-workbench.el` and `test/editing-tests.el`. Editing checks
+have their own `make check-editing` target; provide
+`JULIA_WORKBENCH_GRAMMAR_PATH` to require structural tests with a system grammar.
+Without one, those tests explicitly skip. The fallback preserves previous-line
+indentation and provides lexical syntax, not structural parsing. Full
+highlighting of interpolation containing nested string literals requires the
+grammar. Incomplete-form indentation/navigation is best effort. Validation uses
+Emacs 31.1; Emacs 30.1 and an interactive Doom session remain untested.
 
 ### 3. Integrate Eglot and project environments
 

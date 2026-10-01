@@ -1,7 +1,8 @@
 # Feasibility baseline
 
-Recorded 2026-10-01 on Linux/NixOS. Milestone 1 is complete; an installable
-major mode, Eglot UI integration and Doom migration are still pending.
+Recorded 2026-10-01 on Linux/NixOS. Milestones 1 and 2 are complete; the editing
+mode can be loaded from this checkout. Eglot UI integration and Doom migration
+are still pending.
 
 ## Exercised combination
 
@@ -13,12 +14,41 @@ major mode, Eglot UI integration and Doom migration are still pending.
 | JuliaWorkspaces.jl | 13.4.3 |
 | JSONRPC.jl | 3.1.0 |
 | JuliaFormatter.jl / Runic.jl | 2.14.0 / 1.11.1 |
+| Julia tree-sitter grammar | Nix `tree-sitter-julia-0.25.0`, existing system library |
 | Dependency graph | `julia/server-environment/Manifest.toml`, Julia manifest format 2.1 |
 
 Emacs 30.1 and Julia 1.11 are proposed minimums, **not tested combinations**.
 LanguageServer 6.0.1's Julia requirement is 1.11+, so the original proposed
 Julia 1.10 baseline is unavailable with this server release. Julia 1.11/1.12,
 their manifest handling and other operating systems remain to be exercised.
+
+## Editing validation
+
+Fourteen ERT tests cover `.jl` and Julia shebang selection, basic editing with
+no external executables or grammar, missing-grammar recovery guidance, nested
+block/line comments, triple and prefixed strings, command/character literals,
+escaped Unicode characters, adjoints, interpolation, macros/operators and
+Unicode identifiers. With the Nix grammar, they check font-lock queries and
+faces, exact nested indentation and custom offsets, preservation of multiline
+text, Imenu (including qualified short-form methods), definition navigation,
+selection expansion and continued editing of incomplete code. Structural tests
+run with `exec-path` empty as well; editing has no Julia/server dependency.
+
+Run the structural suite explicitly:
+
+```sh
+JULIA_WORKBENCH_GRAMMAR_PATH="$HOME/.config/emacs/.local/etc/tree-sitter" \
+  make check-editing
+```
+
+Without a discoverable grammar, six basic tests run and eight structural tests
+report skips. An invalid explicit grammar path fails before tests run. Grammar
+installation is an explicit command and was not exercised: these checks reuse
+the installed Nix library. Basic indentation copies the previous line; structural
+selection requires the grammar. The lexical fallback does not parse nested
+string literals inside interpolation. Incomplete-form indentation/navigation is
+best effort. Interactive Doom validation and the declared Emacs minimum remain
+pending.
 
 ## Required protocol features
 

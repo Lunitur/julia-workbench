@@ -1,11 +1,63 @@
 # Julia Workbench
 
-A new Julia Emacs package under development. The first milestone proves the
-language server and documentation APIs before implementing the editing UI.
-There is no major mode to install yet. See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+A Julia Emacs package under development. The editing mode and the server/docs
+feasibility checks are implemented. Eglot integration, completion, documentation
+UI and REPL integration follow in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
-The namespace will be `julia-workbench`; this checkout does not replace the
+The namespace is `julia-workbench`; this checkout does not replace the
 existing `julia-mode` package or change Doom configuration.
+
+## Editing mode
+
+Add the checkout to Emacs's load path and load the mode:
+
+```elisp
+(add-to-list 'load-path "/home/carjin/projects/julia-mode")
+;; Use your installed grammar directory; omit this when Emacs already finds it.
+(add-to-list 'treesit-extra-load-path
+             (expand-file-name "~/.config/emacs/.local/etc/tree-sitter"))
+(require 'julia-workbench)
+```
+
+New `.jl` buffers and scripts with a Julia shebang select
+`julia-workbench-mode`. Use `M-x julia-workbench-mode` in an existing buffer.
+The mode derives from `prog-mode` and needs no Julia executable or language
+server for editing. It does not install packages or grammars on opening files.
+
+With a Julia tree-sitter grammar, the mode provides syntax highlighting,
+four-space indentation (customize `julia-workbench-indent-offset`), Imenu, and
+`C-M-a` / `C-M-e` definition navigation, including short-form methods.
+`C-c C-SPC` selects the containing top-level form; `C-c C-e` selects a syntax
+node and expands an active selection to its parent. Multiline string and comment
+contents retain their indentation. Parsing errors permit continued editing;
+indentation and navigation around incomplete forms are best effort.
+
+Without the grammar, basic highlighting, nested block comments, multiline
+strings, character literals and ordinary comment commands work. Indentation
+copies the previous line; structural selection requires the grammar. This
+fallback is deliberately a small lexical aid, with no second Julia parser.
+Interpolation with nested string literals needs the grammar for accurate
+highlighting. Customize `julia-workbench-use-tree-sitter` to disable it explicitly.
+
+On Nix, use the supplied `libtree-sitter-julia.so` through
+`treesit-extra-load-path`. Elsewhere, `M-x julia-workbench-install-grammar`
+explicitly downloads and compiles the grammar using Git and a C compiler;
+customize `julia-workbench-grammar-source` to pin its revision. Reopen buffers
+after installing or changing grammar availability. Emacs without tree-sitter
+support can still use basic editing.
+
+Editing checks are independent of Julia and the server:
+
+```sh
+make check-editing
+# Require structural tests with the existing Nix grammar:
+JULIA_WORKBENCH_GRAMMAR_PATH="$HOME/.config/emacs/.local/etc/tree-sitter" \
+  make check-editing
+```
+
+Without a discoverable grammar, structural ERT tests report skips. An explicit
+`JULIA_WORKBENCH_GRAMMAR_PATH` that cannot load the Julia grammar fails the run.
+See below for the Nix command when Make is unavailable.
 
 ## Feasibility checks
 
@@ -29,6 +81,9 @@ and `nix shell nixpkgs#gnumake -c make check`, or run:
 julia --startup-file=no julia/setup-server.jl
 julia --startup-file=no --project=test/fixtures/Example test/documentation-tests.jl
 emacs -Q --batch -l test/server-tests.el -f ert-run-tests-batch-and-exit
+JULIA_WORKBENCH_GRAMMAR_PATH="$HOME/.config/emacs/.local/etc/tree-sitter" \
+  emacs -Q --batch -L . -l julia-workbench.el -l test/editing-tests.el \
+  -f ert-run-tests-batch-and-exit
 ```
 
 The server test uses a temporary copy of a tiny project and the real
