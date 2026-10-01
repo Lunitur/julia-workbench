@@ -1,8 +1,8 @@
 # Feasibility baseline
 
-Recorded 2026-10-01 on Linux/NixOS. Milestones 1 and 2 are complete; the editing
-mode can be loaded from this checkout. Eglot UI integration and Doom migration
-are still pending.
+Recorded 2026-10-01 on Linux/NixOS. Milestones 1 through 3 are complete; editing
+and project-aware Eglot integration can be loaded from this checkout.
+Interactive Doom/Corfu validation and Doom migration are still pending.
 
 ## Exercised combination
 
@@ -50,6 +50,47 @@ string literals inside interpolation. Incomplete-form indentation/navigation is
 best effort. Interactive Doom validation and the declared Emacs minimum remain
 pending.
 
+## Eglot and project validation
+
+`make test-eglot` runs fifteen unit fixtures without Julia. They cover nearest
+environment discovery and filename precedence, explicit relative project files,
+VC roots distinct from nested environments, connection identity, standalone
+resolution without process/filesystem side effects, custom contacts, existing
+Eglot mappings, missing-tool guidance, executable/version/path overrides, old
+Julia and remote-launch errors, doctor output, cache invalidation, asynchronous
+setup logs/duplicate jobs/nonzero exits, and forced-shutdown error recovery.
+
+`make test-eglot-integration` uses real Eglot-managed buffers and the installed
+LanguageServer 6.0.1. Two temporary packages expose distinct documentation
+needles. The fixture verifies independent connections, same-project sibling
+sharing, package hover, Flymake diagnostics, Xref definitions, three applied
+rename edits including a call after BMP/astral Unicode, formatting and subsequent
+hover after synchronization. It kills one server, reconnects its unsaved buffer,
+confirms the other server remains alive, then reconnects with an explicitly
+changed environment argument and shuts down both connections. Event/stderr logs
+are saved under `test/results/eglot`, including on failure.
+
+A separate batch Emacs run exercised the public asynchronous setup command in
+a temporary tooling directory with `JULIA_PKG_OFFLINE=true`. It completed with
+exit 0 and installed the pinned Project/Manifest using existing Julia depot
+dependencies; its logs are in `test/results/eglot/setup.log`. Initial download
+and cold precompilation remain covered by the earlier setup measurements.
+
+The test harness uses a POSIX shell for project.el file listing (the installed
+default shell is Nushell), trusts only its generated fixture directory, and
+starts Flymake directly rather than waiting for an interactive command loop.
+The package reports shell/content-trust settings in its doctor and preserves
+the user's choices. Eglot controls connection waiting via its own settings.
+The small cached `julia --version` probe is synchronous and runs only during
+explicit setup/connection/doctor, never while opening a file.
+
+Environment overrides set the active environment argument. LanguageServer's
+per-file workspace/package resolution still takes precedence where applicable;
+the adapter does not alter upstream resolution policy. Inlay hints are
+advertised and Emacs 31 provides the client command; type-definition is absent.
+Code actions, inlay UI, Corfu insertion, automatic crash reconnection, remote
+contacts and minimum-version combinations remain unvalidated here.
+
 ## Required protocol features
 
 The test client launches an isolated tooling environment and explicitly passes
@@ -71,8 +112,9 @@ Initialization also advertises signature help, references, document/workspace
 symbols, document highlights, code actions, selection ranges, document links,
 workspace folders and inlay hints. These are capability observations, not runtime
 validation. Declaration, type-definition, implementation, folding-range and
-color providers are false. Snippet negotiation, cancellation, crash/reconnect,
-multiple-project isolation and Eglot/Doom UI behavior belong to later milestones.
+color providers are false. Crash/reconnect and multiple-project isolation now
+have Eglot fixtures above. Snippet negotiation, cancellation and interactive
+Eglot/Doom UI behavior remain for later milestones.
 
 LanguageServer 6 uses project `JuliaLint.toml` configuration and disables
 `missing_reference` in its default preset. The fixture therefore checks a
@@ -154,9 +196,10 @@ for setup/benchmark). Setup is explicit and writes its Project/Manifest and
 symbol caches to user-writable locations outside the checkout. Server launch
 and tests do not install packages. See [README.md](README.md) for path overrides.
 
-`make check` passed 38 Julia assertions, two ERT tests (one is the full live-server
-contract), byte compilation with warnings treated as errors, and `checkdoc`
-without diagnostics. Whitespace checks passed for the new files. The benchmark
+With the explicit Nix grammar path, `make check` passed 38 Julia assertions and
+32 ERT tests (14 editing, 15 environment/setup, two protocol and one live Eglot
+fixture), byte compilation with warnings treated as errors, and `checkdoc`
+without diagnostics. Whitespace checks passed. The earlier benchmark
 contract passed against both empty and reused symbol caches; servers exited
 cleanly. Setup also succeeded on a repeat invocation; a separate temporary
 environment check confirmed that an unrelated Project/Manifest is not replaced.
@@ -166,10 +209,11 @@ Raw reports and logs are local, ignored artifacts:
 - `test/results/{empty-symbol-cache,reused-symbol-cache}/server-report.json`
   and the corresponding logs.
 - `test/results/documentation-timings.toml`.
+- `test/results/eglot/{events,stderr}-N.log` and `setup.log`.
 
-No interactive Emacs completion UI, tree-sitter editing, Eglot major-mode
-connection, REPL integration, minimum-version check or Doom runtime validation
-has occurred yet.
+No interactive Emacs completion UI, REPL integration, minimum-version check
+or Doom runtime validation has occurred yet. Tree-sitter editing and Eglot
+major-mode connections have automated fixtures as described above.
 
 ## Upstream API references
 

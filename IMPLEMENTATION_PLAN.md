@@ -1,9 +1,10 @@
 # Julia Workbench implementation plan
 
-Status: milestones 1 and 2 completed on 2026-10-01. The isolated server launcher,
-documentation prototype, real-server fixture and editing major mode are
-implemented. Eglot/project integration starts at milestone 3; Doom migration
-remains pending until the replacement passes its later milestones.
+Status: milestones 1 through 3 completed on 2026-10-01. The isolated server
+launcher, documentation prototype, real-server fixtures, editing major mode and
+project-aware Eglot integration are implemented. Completion UI and Unicode CAPF
+start at milestone 4; Doom migration remains pending until the replacement
+passes its later milestones.
 
 ## Progress
 
@@ -21,8 +22,16 @@ remains pending until the replacement passes its later milestones.
   installed Nix Julia grammar (0.25.0), Unicode, nested blocks/comments,
   literals/interpolation, incomplete code and both availability paths.
   See [README.md](README.md) for loading and reproduction commands.
-- [ ] 3. Eglot and project environment integration (next).
-- [ ] 4. Completion UI and Unicode CAPF.
+- [x] 3. Eglot and project environments: nearest-project discovery with Julia
+  filename precedence, explicit directory/file overrides and an isolated empty
+  standalone fallback. Eglot workspace identities separate root, environment,
+  executable and contact settings; user mappings and workspace configuration
+  are preserved. Explicit asynchronous setup, reconnect, shutdown and doctor
+  commands are available. Fifteen unit fixtures and a live two-project Eglot
+  fixture cover isolation/sharing, package hover, Flymake, Xref, Unicode rename,
+  formatting, process crashes and changed-environment reconnect. See
+  [README.md](README.md) and [COMPATIBILITY.md](COMPATIBILITY.md).
+- [ ] 4. Completion UI and Unicode CAPF (next).
 - [ ] 5. Asynchronous documentation UI, search and caching.
 - [ ] 6. Project REPL and evaluation.
 - [ ] 7. Doom migration after validation.
@@ -154,6 +163,31 @@ Emacs 31.1; Emacs 30.1 and an interactive Doom session remain untested.
 
 Exit criterion: two independent projects use the correct environments, share
 connections appropriately, and recover cleanly from missing tools and crashes.
+
+Implemented in `julia-workbench-eglot.el`, `test/eglot-tests.el` and
+`test/eglot-integration-tests.el`. Run `make test-eglot` without Julia, or
+`make check-eglot` with the explicitly installed server. The selected Julia
+minor determines tooling/cache paths. Standalone environments are private,
+empty and created only on connection; the default global environment is not
+used. Reconnect invalidates runtime probes and invokes an environment-change
+hook for later cache consumers. It resolves new settings rather than reusing
+Eglot's saved arguments, and handles errors after forced server termination.
+
+The live fixture runs in Emacs 31.1 / Julia 1.13.1 with LanguageServer 6.0.1;
+its protocol/stderr logs are retained under `test/results/eglot`. A separate
+noninteractive run verified actual asynchronous setup in a temporary tooling
+directory, using already installed dependencies in offline mode. Setup stdout,
+stderr, duplicate-job rejection and nonzero exits also have unit fixtures.
+Batch fixtures trust only their generated directory, start Flymake explicitly,
+and use a POSIX shell for project.el file listing. The doctor reports content
+trust and shell settings without altering them. Interactive Doom validation,
+remote custom contacts and minimum-version validation remain pending.
+
+Environment overrides select the server's active environment argument;
+LanguageServer 6 still applies its own per-file workspace/package environment
+resolution. The adapter does not replace that upstream policy or set global
+workspace options. Optional inlay hints and absent type-definition support are
+reported as capabilities, not interactive feature validation.
 
 ### 4. Deliver first-class completion
 

@@ -1,8 +1,9 @@
 # Julia Workbench
 
-A Julia Emacs package under development. The editing mode and the server/docs
-feasibility checks are implemented. Eglot integration, completion, documentation
-UI and REPL integration follow in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+A Julia Emacs package under development. Editing, project-aware Eglot integration
+and the server/docs feasibility checks are implemented. Unicode completion,
+documentation UI and REPL integration follow in
+[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
 The namespace is `julia-workbench`; this checkout does not replace the
 existing `julia-mode` package or change Doom configuration.
@@ -59,7 +60,96 @@ Without a discoverable grammar, structural ERT tests report skips. An explicit
 `JULIA_WORKBENCH_GRAMMAR_PATH` that cannot load the Julia grammar fails the run.
 See below for the Nix command when Make is unavailable.
 
-## Feasibility checks
+## Eglot and environments
+
+In a Julia buffer, run `M-x julia-workbench-setup-server` once to explicitly
+install the pinned tooling environment. Installation runs asynchronously in a
+visible log buffer; opening files never installs packages. Repeat setup to
+restore the supported dependency lock. Cancel with `M-x kill-process` in its
+log buffer. Existing unrelated tooling environments are not overwritten.
+
+Run `M-x julia-workbench-connect` to start Eglot. Semantic completion, ElDoc,
+Xref definitions/references, Flymake diagnostics, `eglot-rename`,
+`eglot-format-buffer` and code actions use Eglot's standard interfaces.
+Inlay hints require an advertised provider and an available
+`eglot-inlay-hints-mode`; the tested server advertises them. Type-definition
+navigation is not advertised by this server. These observations do not claim
+interactive validation of every optional feature.
+
+For automatic connections, explicitly opt in:
+
+```elisp
+(require 'julia-workbench-eglot)
+(add-hook 'julia-workbench-mode-hook #'eglot-ensure)
+```
+
+The ordinary project.el workspace root (for example a Git repository) stays
+separate from the nearest Julia environment. The nearest directory containing
+`JuliaProject.toml` or `Project.toml` supplies the analyzed environment;
+`JuliaProject.toml` wins when both exist. Buffers share a connection only when
+workspace, environment, executable and server settings agree. A nested `test/`
+environment therefore gets a separate connection within the same repository.
+Without a Julia project, standalone files use a private empty environment under
+the Workbench cache, per workspace and Julia minor version. It is created only
+on connection, and does not use or modify Julia's default global environment.
+
+Set project options with directory-local variables, for example:
+
+```elisp
+((julia-workbench-mode
+  . ((julia-workbench-julia-command . "/path/to/julia")
+     (julia-workbench-environment . "test")
+     (eglot-workspace-configuration
+      . (:julia.symbolCacheDownload :json-false)))))
+```
+
+Relative environment paths use the workspace root. Explicit paths can name a
+directory or a project file. Executable/contact settings use Emacs's ordinary
+local-variable approval; they are not declared safe. The package registers only
+its own mode with language ID `julia`, preserves existing Eglot mappings, and
+does not set global workspace configuration. A user `eglot-server-programs`
+entry takes precedence; otherwise `julia-workbench-server-command` can supply a
+custom contact (including a function of INTERACTIVE and PROJECT) and bypass the
+bundled launcher's Julia/tooling checks. The bundled launcher supports local
+projects; remote use requires a custom contact and remains untested.
+
+Use `M-x julia-workbench-reconnect` after changing environment/executable settings
+or project/manifest files. This deliberately shuts down the shared old connection,
+invalidates runtime probes, and resolves the new contact. Other buffers can
+reconnect using their own settings. `eglot-reconnect` instead reuses Eglot's saved
+contact. `M-x julia-workbench-shutdown` retains server logs;
+`M-x julia-workbench-doctor` reports settings, missing tools, status and log names.
+Use `eglot-events-buffer` / `eglot-stderr-buffer` for detailed logs. Eglot's own
+`eglot-autoreconnect` setting controls automatic recovery after a crash.
+
+Customize `julia-workbench-cache-directory`, `julia-workbench-server-project`,
+and `julia-workbench-symbol-cache` for writable locations. The latter two also
+honor the matching `JULIA_WORKBENCH_*` environment variables. Setup and connection
+use the same versioned paths for the selected Julia executable. Neither command
+installs dependencies into the analyzed project.
+
+```sh
+make test-eglot              # Environment/unit tests; Julia not required
+make check-eglot             # Also exercise real Eglot/server buffers and lint
+```
+
+The integration fixture checks two environments, sibling connection sharing,
+Flymake, Unicode rename edits, formatting, Xref, package hover, crashes and
+reconnection with changed settings. Logs are retained under `test/results/eglot`.
+Test fixtures explicitly use a POSIX shell for project.el file listing and start
+Flymake directly because batch Emacs has no interactive command loop. The
+generated fixture directory alone is trusted for the tests. If Flymake disables
+its backend in your session, inspect `trusted-content`; the package leaves that
+setting to Emacs. Interactive Doom/Corfu validation remains a later milestone.
+
+An environment override selects the server's active environment argument.
+LanguageServer 6 still applies its own per-file workspace/package resolution;
+the adapter preserves that upstream policy. Use Julia lint configuration for
+lint rules, and Eglot's project-local workspace settings for supported server
+options. Dotted configuration sections such as `:julia.symbolCacheDownload`
+match the server's actual requests; a nested `:julia` plist does not.
+
+## Reproducible checks
 
 Requires Julia 1.11+ and Emacs 30.1+ with built-in JSON-RPC and ERT. GNU Make is
 optional; its recipes are ordinary shell commands. The exercised versions and
