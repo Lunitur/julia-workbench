@@ -23,11 +23,29 @@
 (autoload 'julia-workbench-shutdown "julia-workbench-eglot" nil t)
 (autoload 'julia-workbench-setup-server "julia-workbench-eglot" nil t)
 (autoload 'julia-workbench-doctor "julia-workbench-eglot" nil t)
+(autoload 'julia-workbench-setup-unicode "julia-workbench-completion" nil t)
+(autoload 'julia-workbench-cancel-unicode-setup "julia-workbench-completion" nil t)
+(autoload 'julia-workbench--setup-completion "julia-workbench-completion")
 
 (defgroup julia-workbench nil
   "Julia editing and development."
   :group 'languages
   :prefix "julia-workbench-")
+
+(defcustom julia-workbench-julia-command "julia"
+  "Julia executable name or path, also usable in directory-local settings.
+Executable settings are intentionally not marked safe local variables."
+  :type 'string :group 'julia-workbench)
+(make-variable-buffer-local 'julia-workbench-julia-command)
+
+(defcustom julia-workbench-cache-directory nil
+  "Writable cache root, or nil for XDG_CACHE_HOME/julia-workbench.
+Tooling, completion data and standalone environments live outside the checkout."
+  :type '(choice (const nil) directory) :group 'julia-workbench)
+
+(defconst julia-workbench--asset-directory
+  (file-name-directory (or load-file-name buffer-file-name))
+  "Installed directory containing the Julia helper assets.")
 
 (defcustom julia-workbench-indent-offset 4
   "Number of spaces per Julia indentation level."
@@ -363,6 +381,7 @@ executable or server is launched when entering this mode."
               indent-line-function #'julia-workbench--indent-basic
               font-lock-defaults '(julia-workbench--font-lock-keywords)
               syntax-propertize-function #'julia-workbench--syntax-propertize)
+  (julia-workbench--setup-completion)
   (add-hook 'syntax-propertize-extend-region-functions
             #'syntax-propertize-multiline nil t)
   (add-hook 'syntax-propertize-extend-region-functions

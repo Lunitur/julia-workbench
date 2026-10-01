@@ -18,12 +18,6 @@
 (require 'seq)
 (require 'subr-x)
 
-(defcustom julia-workbench-julia-command "julia"
-  "Julia executable name or path, also usable in directory-local settings.
-Executable settings are intentionally not marked safe local variables."
-  :type 'string :group 'julia-workbench)
-(make-variable-buffer-local 'julia-workbench-julia-command)
-
 (defcustom julia-workbench-environment nil
   "Analyzed environment directory or project file, overriding discovery.
 Relative paths are resolved from the ordinary project root.  With nil,
@@ -40,11 +34,6 @@ a function of INTERACTIVE and PROJECT.  Existing user Eglot mappings also
 take precedence.  Changing settings requires an explicit reconnect."
   :type 'sexp :group 'julia-workbench)
 (make-variable-buffer-local 'julia-workbench-server-command)
-
-(defcustom julia-workbench-cache-directory nil
-  "Writable cache root, or nil for XDG_CACHE_HOME/julia-workbench.
-Tooling and standalone environments are kept outside the package checkout."
-  :type '(choice (const nil) directory) :group 'julia-workbench)
 
 (defcustom julia-workbench-server-project nil
   "Isolated tooling directory, or nil for the Julia helper's versioned path.
@@ -66,10 +55,6 @@ With nil, honor JULIA_WORKBENCH_SYMBOL_CACHE when set."
   "Functions called with the resolved project before explicit reconnect.
 Future documentation and completion adapters can invalidate their caches here.
 Project and manifest changes take effect after reconnect, never mid-session.")
-
-(defconst julia-workbench--asset-directory
-  (file-name-directory (or load-file-name buffer-file-name))
-  "Installed directory containing the Julia helper assets.")
 
 (defvar julia-workbench--runtime-cache (make-hash-table :test #'equal)
   "Cached Julia runtime probes, cleared on explicit reconnect.")

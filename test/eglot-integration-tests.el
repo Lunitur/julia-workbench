@@ -46,9 +46,78 @@
     (eglot--request (eglot-current-server) :textDocument/hover
                     (eglot--TextDocumentPositionParams) :timeout 90)))
 
-(defun workbench-eglot-integration-save-logs (servers)
-  "Preserve SERVERS' event and stderr logs, including on failure."
-  (let ((directory (expand-file-name "results/eglot" workbench-eglot-integration-directory)))
+(defun workbench-eglot-integration-complete (name &optional documentation)
+  "Accept semantic NAME through standard completion, checking DOCUMENTATION.
+The selection adapter uses the CAPF exactly as a completion UI does."
+  (let* ((selected nil)
+         (completion-in-region-function
+          (lambda (begin end table predicate)
+            (let* ((prefix (buffer-substring-no-properties begin end))
+                   (metadata (completion-metadata prefix table predicate))
+                   (candidate (car (member name (all-completions prefix table predicate))))
+                   (item (and candidate (get-text-property 0 'eglot--lsp-item candidate))))
+              (should (eq (completion-metadata-get metadata 'category) 'eglot-capf))
+              (should (functionp (completion-metadata-get metadata 'display-sort-function)))
+              (should candidate)
+              (should item)
+              (should (= (plist-get item :insertTextFormat) 1))
+              (should (plist-get item :textEdit))
+              (should (stringp (funcall (plist-get completion-extra-properties
+                                                  :annotation-function) candidate)))
+              (when documentation
+                (let ((doc (funcall (plist-get completion-extra-properties :company-doc-buffer)
+                                    candidate)))
+                  (should (buffer-live-p doc))
+                  (with-current-buffer doc
+                    (should (string-match-p documentation (buffer-string))))))
+              (delete-region begin end)
+              (goto-char begin)
+              (insert candidate)
+              (funcall (plist-get completion-extra-properties :exit-function) candidate 'finished)
+              (setq selected t)))))
+    (should (completion-at-point))
+    (should selected)))
+
+(defun workbench-eglot-integration-completion ()
+  "Exercise qualified, import and macro completions with real server edits."
+  (should (equal (seq-take completion-at-point-functions 3)
+                 '(julia-workbench-unicode-completion-at-point
+                   julia-workbench-path-completion-at-point eglot-completion-at-point)))
+  (let ((original (buffer-string)))
+    (unwind-protect
+        (progn
+          (goto-char (point-max))
+          (insert "\nα = 1; emoji = \"🚀\"; Base.sin")
+          (workbench-eglot-integration-complete "sinh" "hyperbolic")
+          (should (string-suffix-p "α = 1; emoji = \"🚀\"; Base.sinh" (buffer-string)))
+          (insert "\nusing Base: sin")
+          (workbench-eglot-integration-complete "sinh" "hyperbolic")
+          (should (string-suffix-p "using Base: sinh" (buffer-string)))
+          (insert "\nBase.@tim")
+          (workbench-eglot-integration-complete "@time")
+          (should (string-suffix-p "Base.@time" (buffer-string)))
+          ;; No identifier yet: the dot trigger must still offer semantic items.
+          (insert "\nBase.")
+          (workbench-eglot-integration-complete "sinh" "hyperbolic")
+          (should (string-suffix-p "Base.sinh" (buffer-string)))
+          (let ((julia-workbench-cache-directory
+                 (expand-file-name "unicode-cache" default-directory)))
+            (let ((process (julia-workbench-setup-unicode)))
+              (workbench-eglot-integration-wait (lambda () (not (process-live-p process))) 30))
+            (should (> (hash-table-count (cdr (julia-workbench--unicode-data))) 3000))
+            (insert "\nx = \\alpha")
+            (should (completion-at-point))
+            (should (string-suffix-p "x = α" (buffer-string)))))
+      (erase-buffer)
+      (insert original)
+      ;; Batch Emacs has no idle command loop to flush the restored document.
+      (eglot--signal-textDocument/didChange))))
+
+(defun workbench-eglot-integration-save-logs (servers &optional subdirectory)
+  "Preserve SERVERS' event and stderr logs, including on failure.
+Use SUBDIRECTORY under results, default eglot."
+  (let ((directory (expand-file-name (concat "results/" (or subdirectory "eglot"))
+                                    workbench-eglot-integration-directory)))
     (make-directory directory t)
     (cl-loop for server in servers for index from 1 do
              (dolist (entry `(("events" . ,(jsonrpc-events-buffer server))
@@ -100,6 +169,7 @@
             (should (cl-some (lambda (diagnostic)
                                (string-match-p "unused" (flymake-diagnostic-text diagnostic)))
                              (flymake-diagnostics)))
+            (workbench-eglot-integration-completion)
             (should (string-match-p "twice" (prin1-to-string
                                               (workbench-eglot-integration-hover
                                                first-buffer "twice(α)"))))
@@ -120,6 +190,10 @@
                                                     (workbench-eglot-integration-hover
                                                      first-buffer "double_value(α)"))))
             (should (eglot-server-capable :completionProvider))
+            (should (eq :json-false
+                        (plist-get (plist-get (plist-get (plist-get
+                                   (eglot-client-capabilities first-server) :textDocument)
+                                   :completion) :completionItem) :snippetSupport)))
             (should (eglot-server-capable :inlayHintProvider))
             (should (fboundp 'eglot-inlay-hints-mode))
             (should-not (eglot-server-capable :typeDefinitionProvider)))
