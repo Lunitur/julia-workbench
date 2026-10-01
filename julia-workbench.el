@@ -32,6 +32,19 @@
 (autoload 'julia-workbench-documentation-search "julia-workbench-doc" nil t)
 (autoload 'julia-workbench-documentation-select-packages "julia-workbench-doc" nil t)
 (autoload 'julia-workbench-documentation-manual-search "julia-workbench-doc" nil t)
+(autoload 'julia-workbench-repl "julia-workbench-repl" nil t)
+(autoload 'julia-workbench-repl-restart "julia-workbench-repl" nil t)
+(autoload 'julia-workbench-repl-interrupt "julia-workbench-repl" nil t)
+(autoload 'julia-workbench-repl-activate-project "julia-workbench-repl" nil t)
+(autoload 'julia-workbench-copy-last-eval-result "julia-workbench-repl" nil t)
+(autoload 'julia-workbench-send-line "julia-workbench-repl" nil t)
+(autoload 'julia-workbench-send-region "julia-workbench-repl" nil t)
+(autoload 'julia-workbench-send-top-level-form "julia-workbench-repl" nil t)
+(autoload 'julia-workbench-send-buffer "julia-workbench-repl" nil t)
+(autoload 'julia-workbench-send-buffer-file "julia-workbench-repl" nil t)
+(autoload 'julia-workbench-send-dwim "julia-workbench-repl" nil t)
+(autoload 'julia-workbench-repl-documentation "julia-workbench-repl" nil t)
+(autoload 'julia-workbench-repl-complete "julia-workbench-repl" nil t)
 
 (defgroup julia-workbench nil
   "Julia editing and development."
@@ -373,6 +386,12 @@ Requires Git and a C compiler.  Prefer an existing system grammar on
     (keymap-set map "C-c C-d" #'julia-workbench-documentation-at-point)
     (keymap-set map "C-c C-h" #'julia-workbench-documentation)
     (keymap-set map "C-c C-s" #'julia-workbench-documentation-search)
+    (keymap-set map "C-c C-z" #'julia-workbench-repl)
+    (keymap-set map "C-c C-l" #'julia-workbench-send-line)
+    (keymap-set map "C-c C-r" #'julia-workbench-send-region)
+    (keymap-set map "C-c C-c" #'julia-workbench-send-dwim)
+    (keymap-set map "C-c C-b" #'julia-workbench-send-buffer)
+    (keymap-set map "C-c C-f" #'julia-workbench-send-buffer-file)
     map)
   "Keymap for `julia-workbench-mode'.")
 
