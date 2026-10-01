@@ -2,11 +2,12 @@
 
 A Julia Emacs package under development. Editing, project-aware Eglot integration,
 semantic/path/Unicode completion, asynchronous documentation lookup/search and
-project REPL/evaluation are implemented. Doom migration follows in
+project REPL/evaluation are implemented. A Doom integration example and scoped
+migration patch are available; migration status is tracked in
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
-The namespace is `julia-workbench`; this checkout does not replace the
-existing `julia-mode` package or change Doom configuration.
+The namespace is `julia-workbench`. The proposed Doom migration is separate
+from installing the independently usable package.
 
 ## Editing mode
 
@@ -351,8 +352,8 @@ make check-documentation            # Also Julia assertions, live Eglot and lint
 ```
 
 These checks exercise real help/search buffers and asynchronous process APIs in
-batch Emacs. Manual keyboard/Doom documentation validation is pending; no Doom
-configuration changes are included. See [COMPATIBILITY.md](COMPATIBILITY.md) for
+batch Emacs. Manual keyboard validation is pending; graphical Doom documentation
+checks are recorded in the migration section below. See [COMPATIBILITY.md](COMPATIBILITY.md) for
 measured worker/cache latency and validation boundaries.
 
 ### Standalone helper CLI
@@ -454,9 +455,9 @@ the selected session environment and does not reconnect Eglot or install package
 This initial REPL provides plain text in `Main`, not Snail's multimedia display,
 debugger, automatic module-context tracking or terminal help/shell/Pkg modes.
 Use runtime lookup, ordinary Julia calls and `import Pkg; Pkg.add(...)` explicitly.
-Remote REPLs are not supported. Existing Doom/Snail configuration is unchanged;
-all core evaluation/activation/result-copy commands now have replacements for
-the later migration. Runtime completion reads current bindings, requiring no
+Remote REPLs are not supported. The Doom migration preserves the core
+evaluation/activation/result-copy workflow using the new commands.
+Runtime completion reads current bindings, requiring no
 Snail-style module-cache refresh.
 
 ```sh
@@ -468,8 +469,99 @@ JULIA_WORKBENCH_GRAMMAR_PATH="$HOME/.config/emacs/.local/etc/tree-sitter" \
 ```
 
 Logs and elapsed measurements are retained in `test/results/repl/`. These are
-automated batch interactions with real Julia processes; manual keyboard and
-Doom REPL validation remain pending.
+automated batch interactions with real Julia processes. Doom REPL/evaluation
+dispatch also passes the graphical migration fixtures below; manual keyboard
+validation remains pending.
+
+## Doom migration
+
+The exact applied change to this user's Nix-managed Doom configuration is in
+[examples/doom-migration.patch](examples/doom-migration.patch). It disables
+`:lang julia`, replaces the Snail configuration with
+[examples/doom.el](examples/doom.el), and declares this checkout in `packages.el`:
+
+```elisp
+(package! julia-workbench
+  :recipe (:type nil :local-repo "/home/carjin/projects/julia-mode"
+           :files ("julia-workbench*.el" "julia")))
+```
+
+The `julia` directory includes all helpers and the tooling Project/Manifest.
+Caches, installed servers and history remain in writable user directories.
+After release, replace the local recipe with a Git recipe pinned to a full
+release commit. These placeholders must be filled with the published repository
+and revision; no release repository exists yet:
+
+```elisp
+(package! julia-workbench
+  :recipe (:type git :repo "https://github.com/OWNER/REPOSITORY.git"
+           :files ("julia-workbench*.el" "julia"))
+  :pin "FULL_RELEASE_COMMIT")
+```
+
+The example preserves the existing localleader evaluation keys and registers
+Doom's REPL and evaluation handlers. `SPC m d` and Doom's documentation lookup
+use persistent, asynchronous help, including after Eglot connects. `SPC m D`
+selects a named binding; `SPC m s` searches documentation text. `SPC m u` now
+requests live runtime completion: this REPL has no Snail module cache to update.
+`SPC m c` explicitly connects Eglot and `SPC m C` reconnects it. Opening a file
+does not start Julia. Doom's existing LSP formatter handles formatting after
+connection, including its configured format-on-save behavior.
+
+This user's `:checkers syntax` module selects Flycheck. Doom's existing
+`flycheck-eglot` bridge consumes Eglot diagnostics, with Flymake disabled in
+managed buffers. The example adds no checker or global diagnostic setting.
+ESS also claims Julia extensions after `:lang julia` is disabled; the example
+registers an explicit case-insensitive Julia mode mapping after module config.
+R/ESS and shared Eglot configuration are retained.
+
+Preview the patch before applying it, using a copied configuration and copied
+Doom package data. A graphical display and this user's already installed Doom,
+Julia, server and grammar are required:
+
+```sh
+make preview-doom
+```
+
+[examples/preview-doom.sh](examples/preview-doom.sh) applies the patch to a new
+directory under `test/results/doom-migration/`, runs `doom sync -U -B`, then
+opens fresh graphical Doom processes for the integration and Corfu fixtures.
+It sets `DOOMDIR`, `DOOMLOCALDIR` and
+`DOOMPROFILELOADFILE` to preview paths; the active configuration, package
+checkouts and daemon are preserved. Preview data is retained for inspection.
+Reflinks reduce the copy size when the filesystem supports them. A config
+that already contains the exact migration is previewed without reapplying it;
+other divergence must be reviewed before retrying.
+
+To apply the patch to an unmigrated configuration and sync without updating
+unrelated packages:
+
+```sh
+git -C /home/carjin/nixos apply --check /home/carjin/projects/julia-mode/examples/doom-migration.patch
+git -C /home/carjin/nixos apply /home/carjin/projects/julia-mode/examples/doom-migration.patch
+doom sync -U
+make test-doom-ui
+make test-doom-corfu-ui
+```
+
+`test-doom-ui` deliberately uses the installed package without adding this
+checkout to `load-path`. Its fixtures check the package graph, helper assets,
+extension/shebang selection, parsing, localleader keys, Doom REPL/evaluation
+dispatch, Flycheck diagnostics, documentation popup, formatting and semantic
+completion after Unicode. Logs are in `test/results/doom-migration/ui.log`.
+`test-doom-corfu-ui` also uses the installed package and tests actual completion
+and documentation child frames; logs are in `test/results/corfu-doom-migration/`.
+All four installed-package Doom fixtures and all three Corfu GUI fixtures passed
+in the isolated migration preview on 2026-10-02 with Emacs 31.1 / Julia 1.13.1.
+The preview also caught and
+fixed a documentation bug when Doom selects the help popup before hover request
+parameters are built; the request now retains its source buffer. Event logs use
+an explicit encoding to preserve raw bytes without opening a coding prompt.
+After explicit approval on 2026-10-02, the patch was applied to the active
+configuration and `doom sync -U` succeeded. Both suites passed again against
+the installed active package. The running daemon was preserved; restart Emacs
+to load the migrated configuration there. Manual keyboard validation and
+minimum-version checks remain separate.
 
 ## License
 

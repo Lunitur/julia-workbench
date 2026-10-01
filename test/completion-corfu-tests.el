@@ -119,7 +119,8 @@ Check popup text for DOCUMENTATION before insertion."
   "Run optional GUI fixtures, retain their log, and exit this test Emacs."
   (let ((status 1)
         (directory (expand-file-name (concat "results/" workbench-corfu-result-name)
-                                     workbench-eglot-integration-directory)))
+                                     workbench-eglot-integration-directory))
+        (coding-system-for-write 'utf-8-emacs))
     (unwind-protect
         (progn
           ;; Timers do not count as first input.  Activate Doom's normal lazy

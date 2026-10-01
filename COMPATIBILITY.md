@@ -1,10 +1,14 @@
 # Feasibility baseline
 
-Recorded 2026-10-01 on Linux/NixOS. Milestones 1 through 6 are complete; editing,
+Recorded 2026-10-01, updated 2026-10-02 on Linux/NixOS. Milestones 1 through 6
+are complete; editing,
 project-aware Eglot, completion, documentation and REPL/evaluation can be loaded
 from this checkout. Automated
 completion GUI checks pass in vanilla Emacs and the current Doom configuration.
-Manual keyboard validation and the complete Doom migration are still pending.
+The proposed Doom migration also passes automated checks in an isolated copy
+using the installed package. The reviewed patch is applied and synced; both
+graphical suites also pass against the active configuration in fresh processes.
+Restarting the existing daemon and manual keyboard validation remain pending.
 
 ## Exercised combination
 
@@ -80,7 +84,7 @@ documentation child frames, readable Unicode/semantic popup contents, successful
 Unicode/emoji and space-containing path insertion, correctly positioned Eglot
 edits, synchronized hover and ElDoc argument signatures. The graphical checks
 drive the actual Corfu UI functions and process event loop; they do not simulate
-a human keyboard session or validate the future complete Doom migration.
+a human keyboard session. Installed-package migration checks are recorded below.
 Result logs and protocol logs live in `test/results/corfu/` and
 `test/results/corfu-doom/`; see [README.md](README.md) for exact commands.
 
@@ -156,7 +160,7 @@ workspace folders and inlay hints. These are capability observations, not runtim
 validation. Declaration, type-definition, implementation, folding-range and
 color providers are false. Crash/reconnect and multiple-project isolation now
 have Eglot fixtures above. Snippet negotiation, cancellation and interactive
-Eglot/Doom UI behavior remain for later milestones.
+manual Eglot/Doom UI use remains unvalidated; automated Doom checks are below.
 
 LanguageServer 6 uses project `JuliaLint.toml` configuration and disables
 `missing_reference` in its default preset. The fixture therefore checks a
@@ -189,12 +193,13 @@ The default CLI is human-readable; `--protocol` writes a versioned UTF-8/base64
 data format consumed by the asynchronous Emacs adapter. Selected package stdout
 is redirected to stderr during requests, keeping machine responses valid.
 
-Fourteen ERT unit fixtures cover protocol/cache validation, executable and
+Fifteen ERT unit fixtures cover protocol/cache validation, executable and
 project/manifest identity, literal argument vectors, Unicode results, cache-only
 ElDoc, process-free opening, result buttons/history/refresh, asynchronous name
 completion, empty/missing docs, captured failures, atomic cache preservation,
 timeouts, cancellation, output/concurrency limits, stale results and killed-buffer
-cleanup. Three real-helper fixtures cover Base/macros, selected Dates/project
+cleanup, including retaining source when a display rule selects the help popup.
+Three real-helper fixtures cover Base/macros, selected Dates/project
 documentation, named completion, search-result lookup, standalone empty
 environments, missing packages, invalid expressions, environment separation and
 project-file invalidation. A timer and buffer edits advance while Julia runs.
@@ -217,7 +222,7 @@ runtimes, or changed package source docs, requires explicit refresh. Local helpe
 caches do not support remote projects. Rendering retains Markdown with basic
 fontification rather than requiring a Markdown package. The optional official
 manual search URL has an ERT construction check; browser interaction, manual
-keyboard use and Doom documentation behavior remain unvalidated.
+keyboard use remains unvalidated. Automated Doom popup validation is recorded below.
 
 ## Timings
 
@@ -304,9 +309,67 @@ Raw reports and logs are local, ignored artifacts:
 - `test/results/eglot/{events,stderr}-N.log` and `setup.log`.
 
 Completion has automated graphical validation in vanilla Emacs and the current
-Doom runtime as described above. No manual keyboard session, minimum-version
-check or complete Doom migration validation has occurred yet.
+Doom runtime as described above. The proposed migration has additional isolated
+Doom validation below, repeated against the applied active configuration.
+Manual keyboard use and minimum-version checks remain pending.
 Tree-sitter editing and Eglot major-mode connections have automated fixtures.
+
+## Doom migration validation
+
+On 2026-10-02, `examples/preview-doom.sh` applied the exact proposed migration
+to a copy of the Nix-managed Doom configuration and synced with `doom sync -U -B`.
+Package data and absolute build symlinks were copied/redirected, and `DOOMDIR`,
+`DOOMLOCALDIR` and `DOOMPROFILELOADFILE` pointed inside the preview. The active
+configuration, package checkouts and daemon were preserved. The generated
+preview loads 252 packages across 59 modules, with `julia-workbench` installed
+from its local recipe and all six previous Julia editor packages deselected.
+
+The graphical preview uses Emacs 31.1, Julia 1.13.1 and LanguageServer 6.0.1,
+with Doom's external Eglot 1.24 / JSONRPC 1.0.29. Its diagnostics backend is
+Flycheck 40.0-snapshot's integrated Eglot bridge (`eglot-check`), with Flymake
+disabled. No separate bridge or diagnostic producer was added. Existing Doom
+LSP formatting uses Apheleia. ESS's Julia association is superseded by the
+explicit Julia Workbench mapping after module configuration.
+
+All four `test/doom-integration-tests.el` fixtures passed against the installed
+package without the checkout on `load-path`. They cover packaged helper and
+manifest assets, extension/shebang detection, grammar parsing, no automatic
+runtime/server startup, preserved localleader keys, Doom REPL/evaluation
+dispatch, diagnostic delivery, persistent hover through Doom lookup, named help,
+documentation search/result buttons, visible help popups, Doom formatting and
+semantic insertion after BMP/astral text. Popup selection exposed a hover bug:
+request parameters were constructed after the current buffer changed to help.
+The implementation now captures the source buffer; its regression raises the
+documentation unit suite to fifteen passing fixtures. The three live helper
+fixtures, live Eglot recovery fixture, strict byte compilation and checkdoc also
+passed after the migration work.
+
+All three existing graphical Corfu fixtures also passed in this migrated
+preview using the installed package and Doom's Orderless completion styles.
+They assert visible completion/documentation child frames, Unicode/emoji and
+space-containing path insertion, semantic server edits after BMP/astral text,
+hover and ElDoc signatures. Their logs live in
+`test/results/corfu-doom-migration/`. Run `make test-doom-corfu-ui` to repeat
+these checks against an installed migration; `make preview-doom` runs both
+the four Doom integration fixtures and these three Corfu fixtures in isolation.
+
+Run `make preview-doom` to reproduce the isolated installed-package checks.
+Logs live in `test/results/doom-migration/{ui,events,stderr,help}.log`; the
+retained preview directory contains its `sync.log`. Log writers explicitly use
+`utf-8-emacs` so raw bytes in Eglot events cannot trigger an encoding prompt.
+After review and explicit approval on 2026-10-02, the patch was applied to the
+active Nix-managed configuration and `doom sync -U` succeeded, building only
+Julia Workbench without updating unrelated packages or purging old repositories.
+The dirty `gptel` checkout and unrelated Nix changes were preserved. All four
+Doom integration fixtures and all three Corfu GUI fixtures then passed again,
+loading the installed active package from
+`~/.config/emacs/.local/straight/build-31.1/`. The logs above now contain this
+active-configuration run; preview directories retain their sync logs.
+
+The existing daemon was left running to preserve the current session and still
+needs a restart to load the new configuration. Manual keyboard use and proposed
+minimum Emacs/Julia combinations remain pending. These checks validate fresh
+Doom processes, not activation of the user's existing daemon.
 
 ## REPL validation
 
@@ -334,7 +397,9 @@ are bounded to 65,536 characters. Multimedia, debugger, automatic module context
 terminal help/shell/Pkg modes and remote sessions are outside the initial scope.
 Source-settings changes choose a different session; manual runtime activation
 does not change Eglot/helper settings. No packages are installed by REPL startup
-or activation. Manual keyboard and Doom REPL validation remain pending.
+or activation. Manual keyboard validation remains pending; the migration
+fixtures exercise Doom's REPL/evaluation dispatch in fresh processes using
+the preview and active configuration.
 
 ```sh
 JULIA_WORKBENCH_GRAMMAR_PATH="$HOME/.config/emacs/.local/etc/tree-sitter" \

@@ -1,7 +1,7 @@
 JULIA ?= julia
 EMACS ?= emacs
 
-.PHONY: setup-server test test-editing test-completion test-corfu-ui test-unicode test-eglot test-eglot-integration test-docs test-documentation test-documentation-integration test-repl test-repl-helper test-repl-integration test-server benchmark check check-editing check-completion check-documentation check-repl check-eglot byte-compile checkdoc
+.PHONY: setup-server test test-editing test-completion test-corfu-ui test-doom-ui test-doom-corfu-ui preview-doom test-unicode test-eglot test-eglot-integration test-docs test-documentation test-documentation-integration test-repl test-repl-helper test-repl-integration test-server benchmark check check-editing check-completion check-documentation check-repl check-eglot byte-compile checkdoc
 
 ELISP = julia-workbench.el julia-workbench-completion.el julia-workbench-eglot.el julia-workbench-doc.el julia-workbench-repl.el test/editing-tests.el test/completion-tests.el test/eglot-tests.el test/eglot-integration-tests.el test/documentation-ui-tests.el test/documentation-integration-tests.el test/repl-tests.el test/repl-integration-tests.el test/server-tests.el
 
@@ -35,6 +35,17 @@ test-unicode:
 # Optional: pass space-separated installed Corfu/extension/Compat directories.
 test-corfu-ui:
 	JULIA="$(JULIA)" $(EMACS) -Q -L . -L test $(foreach directory,$(CORFU_LOAD_PATH),-L "$(directory)") --eval '(setq load-prefer-newer t)' -l test/completion-corfu-tests.el --eval '(run-at-time 1 nil (function workbench-corfu-run))'
+
+# Optional: use the installed package, without adding this checkout to load-path.
+DOOM_EMACS_DIR ?= $(HOME)/.config/emacs
+test-doom-ui:
+	JULIA="$(JULIA)" $(EMACS) --init-directory "$(DOOM_EMACS_DIR)" -l "$(CURDIR)/test/doom-integration-tests.el" --eval '(run-at-time 2 nil (function workbench-doom-run))'
+
+test-doom-corfu-ui:
+	JULIA="$(JULIA)" JULIA_WORKBENCH_CORFU_RESULTS=corfu-doom-migration $(EMACS) --init-directory "$(DOOM_EMACS_DIR)" -L test --eval '(setq load-prefer-newer t)' -l test/completion-corfu-tests.el --eval '(run-at-time 2 nil (function workbench-corfu-run))'
+
+preview-doom:
+	JULIA="$(JULIA)" EMACS="$(EMACS)" EMACSDIR="$(DOOM_EMACS_DIR)" bash examples/preview-doom.sh
 
 test-eglot-integration:
 	JULIA="$(JULIA)" $(EMACS) -Q --batch -L . --eval '(setq load-prefer-newer t)' -l test/eglot-integration-tests.el -f ert-run-tests-batch-and-exit

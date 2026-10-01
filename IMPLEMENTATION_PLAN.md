@@ -1,14 +1,19 @@
 # Julia Workbench implementation plan
 
-Status: milestones 1 through 6 completed on 2026-10-01. The isolated server
+Status: milestones 1 through 6 completed on 2026-10-01; milestone 7 completed
+on 2026-10-02. The isolated server
 launcher, documentation helper, real-server fixtures, editing major mode and
 project-aware Eglot integration, semantic/path completion and Unicode CAPF are
 implemented, together with asynchronous documentation lookup/search and caching
 and project-scoped comint REPL/evaluation.
 Completion popups have automated graphical checks in vanilla Emacs
 and the current Doom configuration. REPL lifecycle and evaluation have real Julia
-batch fixtures. Doom migration is the next milestone; minimum-version and release
-validation remain pending.
+batch fixtures. Doom migration now has an exact scoped patch, an integration
+example and an isolated preview runner; all four migrated Doom integration
+fixtures pass using the installed package. The reviewed migration is applied
+and synced; all four Doom integration and three Corfu GUI fixtures also pass
+against the active configuration in fresh processes. The existing daemon still
+needs a restart; manual keyboard and minimum-version/release checks remain pending.
 
 ## Progress
 
@@ -49,7 +54,7 @@ validation remain pending.
   docstring search, persistent help/history/buttons and explicit package scope.
   Validated data caches include runtime identity and project/manifest contents;
   refresh, cancellation, stale-result rejection and cleanup have fixtures.
-  Fourteen ERT unit tests, three live helper fixtures and 57 Julia assertions
+  Fifteen ERT unit tests, three live helper fixtures and 57 Julia assertions
   pass. The live Eglot fixture also checks persistent hover for a local function,
   even without a local Julia executable. See [README.md](README.md) and
   [COMPATIBILITY.md](COMPATIBILITY.md) for commands, timings and boundaries.
@@ -63,7 +68,10 @@ validation remain pending.
   [README.md](README.md) and [COMPATIBILITY.md](COMPATIBILITY.md) for commands
   and limits. All core Snail workflow commands have replacements; automated
   batch checks precede manual keyboard/Doom validation.
-- [ ] 7. Doom migration after validation (next).
+- [x] 7. Doom migration: reviewed scoped patch applied and `doom sync -U`
+  completed. Four Doom integration fixtures and three Corfu GUI fixtures pass
+  against the installed package in both the preview and active configuration.
+  The existing daemon was preserved; restart it to load the migrated setup.
 - [ ] 8. Package and release validation.
 
 ## Goal and design
@@ -259,8 +267,8 @@ Doom configuration: semantic and Unicode documentation popups, path insertion
 with spaces, Unicode-positioned server edits, hover after synchronization and
 ElDoc argument signatures. Logs are in `test/results/corfu/` and
 `test/results/corfu-doom/`. These are automated GUI interactions, not a manual
-keyboard session. Doom configuration and package declarations remain unchanged;
-full migration/lookup/REPL validation still belongs to milestone 7.
+keyboard session. These milestone 4 checks preceded the configuration migration;
+milestone 7 below records the installed-package lookup/REPL validation.
 
 ### 5. Deliver documentation lookup and search
 
@@ -311,8 +319,9 @@ a Markdown package. Official manual search is an optional browser command.
 Fresh UI requests measured approximately 1.6 seconds for Base lookup, 2.5–3.1
 seconds for text search and 1.5 seconds for a name index; cached lookup took
 about 1.3 milliseconds. These are local measurements with precompile caches.
-Manual keyboard/Doom documentation validation and minimum versions remain
-pending; Doom configuration is unchanged.
+Manual keyboard validation and minimum versions remain pending. Milestone 7
+below exercises documentation popups and lookup dispatch in the preview and
+migrated active configuration.
 
 ### 6. Replace the existing REPL workflow
 
@@ -356,9 +365,10 @@ to character offsets. Neither starts a missing session or replaces Eglot CAPF.
 Queries preserve ans; stale source completions are rejected. No module-cache
 refresh is needed. Plain-text/Main-only evaluation excludes Snail multimedia,
 debugger and automatic module context. Terminal help/shell/Pkg modes and remote
-REPLs are outside this initial implementation. Doom/Snail configuration remains
-unchanged. All automated checks use Emacs 31.1 / Julia 1.13.1; manual keyboard,
-Doom REPL and minimum-version checks remain pending.
+REPLs are outside this initial implementation. All automated checks use Emacs
+31.1 / Julia 1.13.1; manual keyboard and minimum-version checks remain pending.
+Milestone 7 below exercises Doom REPL/evaluation dispatch in the preview and
+migrated active configuration.
 
 ### 7. Migrate Doom after the replacement passes
 
@@ -382,6 +392,65 @@ Doom REPL and minimum-version checks remain pending.
 
 Exit criterion: `.jl` files select the new mode, the previous Julia integrations
 are inactive, and completion, lookup, diagnostics and evaluation work in Doom.
+
+Prepared in `examples/doom.el`, `examples/doom-migration.patch`,
+`examples/preview-doom.sh` and `test/doom-integration-tests.el`. The exact patch
+targets only the three planned Nix-managed Doom files. After review and explicit
+approval, it was applied on 2026-10-02; `doom sync -U` succeeded, building only
+Julia Workbench. Unrelated Nix changes and the dirty `gptel` checkout were
+preserved. The patch remains a record of the applied change.
+
+The candidate disables `:lang julia` and declares the local development package
+with all Julia helpers and the tooling Project/Manifest. The resulting package
+graph omits the six previous Julia editor integrations. ESS claims Julia files
+when the Julia module is disabled, so the example explicitly gives the new mode
+priority after module configuration while retaining R/ESS. It preserves the
+core Snail evaluation keys, adds documentation search/runtime queries and
+explicit server lifecycle keys, and wires Doom's lookup/eval/REPL handlers.
+No Snail module cache exists; its old `u` binding now requests runtime completion.
+
+The actual diagnostic backend is Flycheck 40.0-snapshot's integrated Eglot
+bridge, rather than the unused separate `flycheck-eglot` checkout. Managed
+Julia buffers use `eglot-check` with Flymake off, and Doom's existing LSP
+formatting path handles formatting. No duplicate checker or global checker
+configuration is introduced. The preview also exposed a core documentation bug:
+selecting help through a display rule changed the buffer before hover parameters
+were constructed. The request now retains its source buffer, with a regression
+fixture. The documentation unit suite has fifteen tests.
+
+`make preview-doom` copies configuration and package data, redirects absolute
+build symlinks to copied repositories, and runs `doom sync -U -B` with isolated
+configuration/local-data/profile-loader paths. It then launches a fresh graphical
+Doom process using the installed package, without adding this checkout to
+`load-path`. Logs are retained under `test/results/doom-migration/`. Protocol
+logs use explicit `utf-8-emacs` encoding so raw-byte diagnostics do not open a
+coding-system prompt. The preview does not restart or alter the active daemon.
+After application and `doom sync -U`, `make test-doom-ui` exercises
+the same installed-package checks against the active configuration. See
+[README.md](README.md) for recipes, commands and remaining manual checks.
+
+On 2026-10-02, the copied configuration synced successfully and all four
+graphical Doom fixtures passed with Emacs 31.1, Julia 1.13.1 and LanguageServer
+6.0.1. They verify the installed recipe/assets and package graph, editing without
+starting a runtime, preserved localleader keys, Doom REPL/eval dispatch,
+Flycheck diagnostics, persistent lookup/search popups, result buttons, Doom's
+formatter and semantic insertion after BMP/astral characters. The preview loads
+252 packages across 59 modules; none of the six previous Julia editor packages
+is selected. Fifteen documentation unit fixtures, three live documentation
+fixtures, the live Eglot recovery fixture, strict byte compilation and checkdoc
+also pass. These automated results precede active application and manual use.
+All three existing Corfu GUI fixtures also pass against the installed preview
+package with Orderless: visible completion/documentation child frames, Unicode
+and emoji, paths with spaces, semantic edits, hover and ElDoc signatures.
+`make preview-doom` runs both suites; `make test-doom-corfu-ui` provides the
+separate installed-package Corfu check after application.
+
+Both installed-package suites were repeated successfully against the active
+configuration after sync: four Doom integration fixtures and three Corfu GUI
+fixtures, loading from `~/.config/emacs/.local/straight/build-31.1/`. This meets
+the migration exit criterion in fresh Doom processes. The existing daemon was
+left running to preserve the current session; restart Emacs to load the new
+configuration there. Manual keyboard checks and milestone 8 remain pending.
 
 ### 8. Package and validate for maintenance
 
