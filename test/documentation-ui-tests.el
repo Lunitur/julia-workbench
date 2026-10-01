@@ -324,5 +324,25 @@
        (should (string-prefix-p "https://docs.julialang.org/en/v1/search/?q=" url))
        (should (string-match-p "%CE%B1%20and%20%2B" url))))))
 
+(ert-deftest workbench-doc-hover-preserves-source-when-popup-selects-help ()
+  "Build hover parameters in source even if a display rule selects help."
+  (workbench-doc-with-fixture
+   (insert "Base.sin")
+   (let ((source (current-buffer)) (requested nil))
+     (cl-letf (((symbol-function 'eglot-managed-p) (lambda () t))
+               ((symbol-function 'eglot-current-server) (lambda () 'server))
+               ((symbol-function 'display-buffer)
+                (lambda (buffer &rest _) (set-buffer buffer) nil))
+               ((symbol-function 'julia-workbench--doc-hover)
+                (lambda (callback _timeout)
+                  (should (eq (current-buffer) source))
+                  (should (equal (buffer-string) "Base.sin"))
+                  (setq requested t)
+                  (funcall callback "Source signature α 🐈" nil))))
+       (julia-workbench-documentation-at-point)
+       (should requested)
+       (with-current-buffer "*Julia Documentation*"
+         (should (string-match-p "Source signature" (buffer-string))))))))
+
 (provide 'documentation-ui-tests)
 ;;; documentation-ui-tests.el ends here

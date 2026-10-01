@@ -480,24 +480,28 @@ unlike the ElDoc provider this request survives hiding the source window."
 Use Eglot's asynchronous hover for connected source buffers, including local
 bindings; otherwise look up the name in a separate project-aware helper."
   (interactive)
-  (let* ((symbol (or (julia-workbench--doc-symbol-at-point) (user-error "No Julia symbol at point")))
+  (let* ((source (current-buffer))
+         (symbol (or (julia-workbench--doc-symbol-at-point) (user-error "No Julia symbol at point")))
          (hover (and (eglot-managed-p) (eglot-current-server)))
          (context (julia-workbench--doc-context hover)))
     (if hover
         (let* ((buffer (julia-workbench--doc-buffer context "lookup" symbol))
                (generation (buffer-local-value 'julia-workbench--doc-generation buffer)))
-          (julia-workbench--doc-hover
-           (lambda (text failure)
-             (when (buffer-live-p buffer)
-               (with-current-buffer buffer
-                 (when (= generation julia-workbench--doc-generation)
-                   (julia-workbench--doc-render
-                    context "lookup" symbol
-                    (list :version "(Eglot hover)" :scope "Current language-server workspace"
-                          :found t :markdown text)
-                    (if (julia-workbench--doc-current-p context) failure
-                      "Source settings changed; request again"))))))
-           (plist-get context :timeout)))
+          ;; A display rule can select help immediately (e.g. Doom popups).
+          ;; Build server/position parameters in the captured source buffer.
+          (with-current-buffer source
+            (julia-workbench--doc-hover
+             (lambda (text failure)
+               (when (buffer-live-p buffer)
+                 (with-current-buffer buffer
+                   (when (= generation julia-workbench--doc-generation)
+                     (julia-workbench--doc-render
+                      context "lookup" symbol
+                      (list :version "(Eglot hover)" :scope "Current language-server workspace"
+                            :found t :markdown text)
+                      (if (julia-workbench--doc-current-p context) failure
+                        "Source settings changed; request again"))))))
+             (plist-get context :timeout))))
       (julia-workbench--doc-show context "lookup" symbol))))
 
 ;;;###autoload
