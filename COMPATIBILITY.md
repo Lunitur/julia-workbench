@@ -1,7 +1,8 @@
 # Feasibility baseline
 
-Recorded 2026-10-01 on Linux/NixOS. Milestones 1 through 5 are complete; editing,
-project-aware Eglot, completion and documentation can be loaded from this checkout. Automated
+Recorded 2026-10-01 on Linux/NixOS. Milestones 1 through 6 are complete; editing,
+project-aware Eglot, completion, documentation and REPL/evaluation can be loaded
+from this checkout. Automated
 completion GUI checks pass in vanilla Emacs and the current Doom configuration.
 Manual keyboard validation and the complete Doom migration are still pending.
 
@@ -284,10 +285,11 @@ for setup/benchmark). Setup is explicit and writes its Project/Manifest and
 symbol caches to user-writable locations outside the checkout. Server launch
 and tests do not install packages. See [README.md](README.md) for path overrides.
 
-With the explicit Nix grammar path, `make check` passed 66 Julia assertions
-(57 documentation, nine Unicode) and 62 ERT tests (14 editing, 13 completion,
-15 environment/setup, 14 documentation unit, three live documentation, two
-protocol and one live Eglot fixture), byte compilation with warnings treated
+With the explicit Nix grammar path, `make check` passed 95 Julia assertions
+(57 documentation, nine Unicode, 29 REPL) and 80 ERT tests (14 editing,
+13 completion, 15 environment/setup, 14 documentation unit, three live
+documentation, 13 REPL unit, five live REPL, two protocol and one live Eglot
+fixture), byte compilation with warnings treated
 as errors, and `checkdoc` without diagnostics. Whitespace checks passed. The earlier benchmark
 contract passed against both empty and reused symbol caches; servers exited
 cleanly. Setup also succeeded on a repeat invocation; a separate temporary
@@ -302,9 +304,48 @@ Raw reports and logs are local, ignored artifacts:
 - `test/results/eglot/{events,stderr}-N.log` and `setup.log`.
 
 Completion has automated graphical validation in vanilla Emacs and the current
-Doom runtime as described above. No manual keyboard session, REPL integration,
-minimum-version check or complete Doom migration validation has occurred yet.
+Doom runtime as described above. No manual keyboard session, minimum-version
+check or complete Doom migration validation has occurred yet.
 Tree-sitter editing and Eglot major-mode connections have automated fixtures.
+
+## REPL validation
+
+Thirteen ERT unit fixtures cover session scope independent of server settings,
+no launch on opening source, empty-selection rejection, missing environments,
+safe Unicode/source encoding, arbitrary output chunk splits, unrelated control
+output, success/error/stale records, callback failures, bounded ordered queues,
+absolute source lines under narrowing, unsaved buffer contents, structured and
+incomplete forms, source completion staleness, interrupt cancellation and startup
+deadline/buffer cleanup. Five real Julia comint fixtures check runtime isolation
+and sharing, explicit activation, empty standalone environments, line/region/
+DWIM/top-level/buffer/file evaluation, Unicode filenames and completion offsets,
+relative includes, source backtraces, stdout versus result copying, asynchronous
+startup, evaluated-symbol docs independent of helpers, preserved ans, actual
+interruption, cancelled queued work, multiline history after restart, deliberate
+process exit, session recreation and process cleanup. Twenty-nine Julia assertions
+exercise the standard-library adapter, including soft scope and newly defined
+display methods without world-age errors.
+
+The REPL uses a Julia BasicREPL over pipes with comint-owned history/input.
+Source evaluates in Main through include APIs; top-level selection needs the
+grammar. Runtime named docs and insertable completion query the existing process
+explicitly; method-only completion lists are not inserted. Plain-text renderings
+are bounded to 65,536 characters. Multimedia, debugger, automatic module context,
+terminal help/shell/Pkg modes and remote sessions are outside the initial scope.
+Source-settings changes choose a different session; manual runtime activation
+does not change Eglot/helper settings. No packages are installed by REPL startup
+or activation. Manual keyboard and Doom REPL validation remain pending.
+
+```sh
+JULIA_WORKBENCH_GRAMMAR_PATH="$HOME/.config/emacs/.local/etc/tree-sitter" \
+  make check-repl
+```
+
+Ignored transcripts and elapsed measurements are retained in `test/results/repl/`.
+Startup plus first evaluation measured about one second with installed Julia
+precompile caches; simple repeated evaluations measured about 0.06–0.07 seconds
+including a 0.05-second fixture wait for the trailing prompt. These are batch
+measurements, not first-ever precompilation or manual UI timings.
 
 ## Upstream API references
 
@@ -312,3 +353,5 @@ Tree-sitter editing and Eglot major-mode connections have automated fixtures.
 - [LanguageServer 6.0.1 capabilities and initialization](https://github.com/julia-vscode/LanguageServer.jl/blob/v6.0.1/src/requests/init.jl)
 - [Julia documentation](https://docs.julialang.org/en/v1/manual/documentation/)
 - [Julia documentation search utilities](https://docs.julialang.org/en/v1/stdlib/InteractiveUtils/)
+- [Julia REPL](https://docs.julialang.org/en/v1/stdlib/REPL/)
+- [Emacs comint process interaction](https://www.gnu.org/software/emacs/manual/html_node/emacs/Interactive-Shell.html)

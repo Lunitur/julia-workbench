@@ -1,8 +1,8 @@
 # Julia Workbench
 
 A Julia Emacs package under development. Editing, project-aware Eglot integration,
-semantic/path/Unicode completion and asynchronous documentation lookup/search
-are implemented. Project REPL integration follows in
+semantic/path/Unicode completion, asynchronous documentation lookup/search and
+project REPL/evaluation are implemented. Doom migration follows in
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
 The namespace is `julia-workbench`; this checkout does not replace the
@@ -383,6 +383,93 @@ each CLI invocation starts a fresh helper process. The Julia API
 returns structured results, while the default CLI emits human-readable UTF-8
 text. The Emacs adapter passes `--protocol` to request versioned, base64-encoded
 UTF-8 fields and uses `names ''` for its documented-symbol completion index.
+
+## Project REPL and evaluation
+
+In a Julia buffer, `C-c C-z` (`julia-workbench-repl`) starts or shows the project's
+comint REPL. Calling it in the REPL switches back to the last source buffer.
+Startup is asynchronous and installs nothing. Sessions share only when workspace,
+selected environment, resolved Julia executable and
+`julia-workbench-repl-arguments` agree. The environment uses the same nearest
+project and `julia-workbench-environment` override as Eglot. Standalone files get
+a private empty environment under the writable cache, with no global-environment
+package fallback. A missing executable/project produces an actionable error.
+
+The REPL header shows the Julia version, starting/idle/busy/stopped status,
+queued evaluations and selected environment. `RET` evaluates complete input;
+`C-j` adds a newline for a multiline form. `M-p` / `M-n` navigate comint history,
+which persists under `repl-history/` in `julia-workbench-cache-directory` and
+preserves multiline entries after restart. Startup files and Julia's terminal
+history are disabled; comint owns input/history and uses a plain-text frontend.
+
+| Source command | Default key | Behavior |
+| --- | --- | --- |
+| `julia-workbench-send-line` | `C-c C-l` | Current line |
+| `julia-workbench-send-region` | `C-c C-r` | Selected source |
+| `julia-workbench-send-dwim` | `C-c C-c` | Active region, otherwise structured top-level form |
+| `julia-workbench-send-top-level-form` | — | Containing top-level syntax node, including a surrounding module |
+| `julia-workbench-send-buffer` | `C-c C-b` | Whole buffer, including unsaved edits and narrowed-out text |
+| `julia-workbench-send-buffer-file` | `C-c C-f` | Include the saved file; modified buffers require saving or send-buffer |
+| `julia-workbench-copy-last-eval-result` | — | Copy the last successful value's plain-text rendering |
+| `julia-workbench-repl-activate-project` | — | Restore the session's selected project through `Pkg.activate` |
+| `julia-workbench-repl-interrupt` | REPL `C-c C-c` | Interrupt current work and cancel queued evaluations |
+| `julia-workbench-repl-restart` | REPL `C-c C-r` | Start a fresh runtime, retaining transcript and history |
+
+Source evaluation uses Julia's include APIs in `Main`, with REPL soft-scope
+behavior. Filenames and source line offsets survive region/line evaluation;
+saved-file and buffer evaluation support relative `include` and `@__DIR__`.
+Requests encode source as UTF-8 data, so quotes, backslashes, dollar signs and
+Unicode do not alter the transport. Ordinary printed output remains visible.
+Result copying excludes stdout, errors and prompts, keeps semicolon-suppressed
+values, and preserves the previous successful result after an error. Copied
+renderings are bounded to 65,536 characters and may be marked truncated.
+
+Top-level selection and DWIM without a region require the Julia tree-sitter
+grammar and reject incomplete forms. Line, region and buffer/file commands work
+without it. Evaluation is explicit and unrestricted Julia code. Long evaluations
+have no automatic timeout; interrupt or restart them explicitly. The default
+startup deadline is 30 seconds and at most 32 evaluations can be outstanding.
+Customize `julia-workbench-repl-startup-timeout` and
+`julia-workbench-repl-queue-limit` when needed. Killing a REPL buffer or exiting
+Emacs saves history and stops its process; a crashed session can be started again.
+
+`julia-workbench-repl-documentation` asynchronously looks up a named binding in
+the live `Main` module, including evaluated definitions and loaded packages, and
+shows a separate runtime help buffer. In the REPL use `C-c C-d`.
+`julia-workbench-repl-complete` explicitly requests standard-library runtime
+completion (`M-TAB` in the REPL), applying character-correct edits even after
+Unicode. In source buffers it completes the current line prefix. Results are
+inserted only while the source text and point are unchanged. Method-list-only
+results are reported as having no insertable completions; candidates are bounded
+to 1,000 and the response size limit. Neither command starts a missing REPL.
+Queries preserve Julia's `ans` and do not replace Eglot's CAPF.
+
+Runtime evaluation, LSP analysis and documentation helper processes have separate
+state. A helper cannot see functions defined only in the REPL; use runtime lookup
+for those. Changing source environment/options selects a different session;
+restart deliberately after changing runtime wrappers or project dependencies.
+Manual `Pkg.activate` affects the runtime alone; explicit activation restores
+the selected session environment and does not reconnect Eglot or install packages.
+
+This initial REPL provides plain text in `Main`, not Snail's multimedia display,
+debugger, automatic module-context tracking or terminal help/shell/Pkg modes.
+Use runtime lookup, ordinary Julia calls and `import Pkg; Pkg.add(...)` explicitly.
+Remote REPLs are not supported. Existing Doom/Snail configuration is unchanged;
+all core evaluation/activation/result-copy commands now have replacements for
+the later migration. Runtime completion reads current bindings, requiring no
+Snail-style module-cache refresh.
+
+```sh
+make test-repl             # Unit fixtures; no Julia required
+make test-repl-helper      # Julia standard-library adapter assertions
+make test-repl-integration # Real asynchronous comint sessions, no server needed
+JULIA_WORKBENCH_GRAMMAR_PATH="$HOME/.config/emacs/.local/etc/tree-sitter" \
+  make check-repl          # Also structured evaluation, byte compilation and lint
+```
+
+Logs and elapsed measurements are retained in `test/results/repl/`. These are
+automated batch interactions with real Julia processes; manual keyboard and
+Doom REPL validation remain pending.
 
 ## License
 

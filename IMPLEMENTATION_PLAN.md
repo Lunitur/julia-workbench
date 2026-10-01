@@ -1,12 +1,14 @@
 # Julia Workbench implementation plan
 
-Status: milestones 1 through 5 completed on 2026-10-01. The isolated server
+Status: milestones 1 through 6 completed on 2026-10-01. The isolated server
 launcher, documentation helper, real-server fixtures, editing major mode and
 project-aware Eglot integration, semantic/path completion and Unicode CAPF are
-implemented, together with asynchronous documentation lookup/search and caching.
+implemented, together with asynchronous documentation lookup/search and caching
+and project-scoped comint REPL/evaluation.
 Completion popups have automated graphical checks in vanilla Emacs
-and the current Doom configuration. Project REPL/evaluation starts at milestone 6;
-Doom migration remains pending until the replacement passes its later milestones.
+and the current Doom configuration. REPL lifecycle and evaluation have real Julia
+batch fixtures. Doom migration is the next milestone; minimum-version and release
+validation remain pending.
 
 ## Progress
 
@@ -51,8 +53,17 @@ Doom migration remains pending until the replacement passes its later milestones
   pass. The live Eglot fixture also checks persistent hover for a local function,
   even without a local Julia executable. See [README.md](README.md) and
   [COMPATIBILITY.md](COMPATIBILITY.md) for commands, timings and boundaries.
-- [ ] 6. Project REPL and evaluation (next).
-- [ ] 7. Doom migration after validation.
+- [x] 6. Project REPL and evaluation: explicit asynchronous comint sessions with
+  persistent multiline history, status, activation, interrupt/restart and result
+  copying; line/region/structured top-level/buffer/file/DWIM sends preserve source
+  locations and includes. Runtime docs/completion query live Main independently
+  of LSP/helper processes. Thirteen ERT unit fixtures, five live Julia fixtures
+  and 29 Julia assertions cover isolation, Unicode, output framing, errors,
+  interruption, cancelled queues, history, crashes and cleanup. See
+  [README.md](README.md) and [COMPATIBILITY.md](COMPATIBILITY.md) for commands
+  and limits. All core Snail workflow commands have replacements; automated
+  batch checks precede manual keyboard/Doom validation.
+- [ ] 7. Doom migration after validation (next).
 - [ ] 8. Package and release validation.
 
 ## Goal and design
@@ -319,6 +330,35 @@ pending; Doom configuration is unchanged.
 
 Exit criterion: the user's existing core Snail keybindings have functioning
 replacements before Snail is removed from the configuration.
+
+Implemented in `julia-workbench-repl.el`, `julia/repl.jl` and the REPL fixtures.
+`make test-repl` works without Julia; `make check-repl` runs real standard-library
+helpers/comint sessions and lint. Set `JULIA_WORKBENCH_GRAMMAR_PATH` to require
+structured evaluation tests. Sessions are keyed by workspace, environment,
+resolved executable and launch options, independently of server contacts.
+Source commands can queue during asynchronous startup; opening files starts no
+process. Standalone REPL environments and comint history live outside the
+checkout. Startup has a deadline; evaluation has no automatic timeout.
+
+Julia include APIs run source in Main with REPL soft scope, original filenames
+and padded line offsets. Structured top-level sends use the existing grammar,
+declining incomplete forms; line/region/buffer/file sends work without it.
+Saved-file evaluation declines unsaved edits rather than saving implicitly.
+Hidden bounded result records preserve ordinary stdout and separate copyable
+values from errors/prompts. Interrupt discards queued work; restart clears
+runtime state and keeps transcript/history. Killing buffers and Emacs exit
+save history and stop processes. Real fixtures also exercise deliberate process
+exit and automatic session recreation on the next explicit send/start.
+
+Runtime documentation uses the existing named-binding adapter against live Main;
+explicit runtime completion uses Julia's REPL APIs and translates byte ranges
+to character offsets. Neither starts a missing session or replaces Eglot CAPF.
+Queries preserve ans; stale source completions are rejected. No module-cache
+refresh is needed. Plain-text/Main-only evaluation excludes Snail multimedia,
+debugger and automatic module context. Terminal help/shell/Pkg modes and remote
+REPLs are outside this initial implementation. Doom/Snail configuration remains
+unchanged. All automated checks use Emacs 31.1 / Julia 1.13.1; manual keyboard,
+Doom REPL and minimum-version checks remain pending.
 
 ### 7. Migrate Doom after the replacement passes
 
