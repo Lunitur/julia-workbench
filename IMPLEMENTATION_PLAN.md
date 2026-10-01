@@ -1,10 +1,11 @@
 # Julia Workbench implementation plan
 
-Status: milestones 1 through 4 completed on 2026-10-01. The isolated server
-launcher, documentation prototype, real-server fixtures, editing major mode and
+Status: milestones 1 through 5 completed on 2026-10-01. The isolated server
+launcher, documentation helper, real-server fixtures, editing major mode and
 project-aware Eglot integration, semantic/path completion and Unicode CAPF are
-implemented. Completion popups have automated graphical checks in vanilla Emacs
-and the current Doom configuration. Documentation UI starts at milestone 5;
+implemented, together with asynchronous documentation lookup/search and caching.
+Completion popups have automated graphical checks in vanilla Emacs
+and the current Doom configuration. Project REPL/evaluation starts at milestone 6;
 Doom migration remains pending until the replacement passes its later milestones.
 
 ## Progress
@@ -41,8 +42,16 @@ Doom migration remains pending until the replacement passes its later milestones
   Unicode positions, failures, cancellation and timeout cleanup. Three optional
   GUI fixtures show completion/documentation child frames and accept candidates
   in Emacs -Q and the user's current Doom/Corfu/Orderless setup.
-- [ ] 5. Asynchronous documentation UI, search and caching (next).
-- [ ] 6. Project REPL and evaluation.
+- [x] 5. Asynchronous documentation UI, search and caching: bounded,
+  project-aware standard-library helpers; named-symbol completion, literal
+  docstring search, persistent help/history/buttons and explicit package scope.
+  Validated data caches include runtime identity and project/manifest contents;
+  refresh, cancellation, stale-result rejection and cleanup have fixtures.
+  Fourteen ERT unit tests, three live helper fixtures and 57 Julia assertions
+  pass. The live Eglot fixture also checks persistent hover for a local function,
+  even without a local Julia executable. See [README.md](README.md) and
+  [COMPATIBILITY.md](COMPATIBILITY.md) for commands, timings and boundaries.
+- [ ] 6. Project REPL and evaluation (next).
 - [ ] 7. Doom migration after validation.
 - [ ] 8. Package and release validation.
 
@@ -263,6 +272,36 @@ full migration/lookup/REPL validation still belongs to milestone 7.
 
 Exit criterion: name lookup and text search both work, a dependency's docs can
 be included explicitly, and a slow helper does not block typing.
+
+Implemented in `julia-workbench-doc.el`, the extended `julia/documentation.jl`
+helper and documentation fixtures. `make test-documentation` runs without Julia;
+`make check-documentation` also runs Julia and live Eglot checks plus lint.
+The helper's protocol uses versioned UTF-8/base64 data, with package load output
+captured in stderr rather than mixed with results. No query text is evaluated.
+Lookup and search start fresh jobs in the selected environment, with an isolated
+empty fallback and no global-environment package fallback. Package selection is
+explicit and buffer-local; only selected packages and their ordinary transitive
+loads enter the helper scope. Nothing is imported while opening or typing.
+
+Persistent help uses asynchronous Eglot hover for connected buffers, including
+local bindings; other/named lookups use the helper. ElDoc preserves connected
+Eglot providers and offers already cached helper lookups elsewhere, without
+launching processes from idle typing. Result buttons retain the captured source
+scope, and history retains rendered snapshots. New requests supersede older
+ones. Timeout, cancellation, output/concurrency limits, buffer killing and Emacs
+shutdown clean up workers; failures preserve old caches and retain stderr logs.
+
+Cache identities include executable path/size/mtime, helper content, environment,
+package selection and contents of project and ordinary/versioned manifest files.
+Results record the exporting Julia version. Refresh explicitly after editing
+package sources or changing a runtime behind an unchanged wrapper. Help buffers
+show Markdown signatures/examples with basic fontification, without requiring
+a Markdown package. Official manual search is an optional browser command.
+Fresh UI requests measured approximately 1.6 seconds for Base lookup, 2.5–3.1
+seconds for text search and 1.5 seconds for a name index; cached lookup took
+about 1.3 milliseconds. These are local measurements with precompile caches.
+Manual keyboard/Doom documentation validation and minimum versions remain
+pending; Doom configuration is unchanged.
 
 ### 6. Replace the existing REPL workflow
 

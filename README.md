@@ -1,8 +1,8 @@
 # Julia Workbench
 
 A Julia Emacs package under development. Editing, project-aware Eglot integration,
-semantic/path/Unicode completion and server/docs feasibility checks are
-implemented. Documentation UI and REPL integration follow in
+semantic/path/Unicode completion and asynchronous documentation lookup/search
+are implemented. Project REPL integration follows in
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
 The namespace is `julia-workbench`; this checkout does not replace the
@@ -285,7 +285,77 @@ Stdout is reserved for LSP; diagnostics go to stderr. The client must initialize
 the server before requesting features. Project and server packages must already
 be installed. The test client disables upstream symbol-cache downloads.
 
-## Documentation prototype
+## Documentation
+
+Julia buffers provide these commands:
+
+| Command | Binding | Behavior |
+| --- | --- | --- |
+| `julia-workbench-documentation-at-point` | `C-c C-d` | Persistent Eglot hover when connected; otherwise project-aware helper lookup |
+| `julia-workbench-documentation` | `C-c C-h` | Named-symbol lookup with ordinary `completing-read` completion |
+| `julia-workbench-documentation-search` | `C-c C-s` | Literal search through docstring text |
+| `julia-workbench-documentation-select-packages` | `M-x` | Explicitly select project packages or standard libraries for helper documentation |
+| `julia-workbench-documentation-manual-search` | `M-x` | Optional official Julia manual search in your browser |
+
+Named lookup asynchronously builds its name index before prompting on first
+use. Subsequent prompts reuse the validated index. If another minibuffer is
+active when indexing finishes, results appear in the help buffer; invoke named
+lookup again to choose a symbol. Completion accepts arbitrary names as well as
+indexed names, including `Base.sin`, `Base.@time`, `Base.+` and `π`.
+
+The persistent `*Julia Documentation*` buffer shows environment, runtime and
+loaded-documentation scope, with readable Markdown signatures/examples. Search
+results are buttons: `n`/`p` navigate and `RET` opens a symbol in the same captured
+scope. Use `l`/`r` for help history, `g` to refresh, `c` to cancel, and `q` to quit
+the window. Refresh bypasses the cached response and resolves current source
+settings. New requests supersede older ones; history stores rendered snapshots.
+
+Helpers always use the source buffer's selected Julia environment. To include
+a dependency's docs, run `M-x julia-workbench-documentation-select-packages` and
+enter names such as `Dates, MyPackage`, or set buffer-local
+`julia-workbench-documentation-packages`. Selection itself loads nothing.
+The helper starts only for an explicit request and loads the selected packages
+using Julia's ordinary loading API. Their initialization runs in that separate
+process; their transitive loads also contribute documentation. It neither imports
+every dependency nor shares your REPL's state. Standalone files use a private
+empty environment under the cache; helpers exclude the default global environment
+from Julia's load path. Installed packages suffice for offline local lookup/search.
+
+Opening files and ElDoc never launch documentation workers. Connected buffers
+retain Eglot's hover/signature providers; persistent help also uses the server
+for local definitions that a fresh helper cannot know. Unconnected buffers offer
+previously cached helper lookups through ElDoc. Named lookup and full-text search
+always use helpers, independent of the language server.
+
+Caches live under `julia-workbench-cache-directory` in `documentation/`. Keys
+include resolved executable identity, environment, selected packages, helper
+content and contents of project/manifest files, including versioned manifests.
+Results record the Julia version and use validated data, never executable Lisp.
+Refresh after editing package sources or changing a runtime behind an unchanged
+wrapper. Failed/cancelled refreshes preserve prior cache files. Missing or corrupt
+caches trigger a fresh helper only on an explicit request.
+
+Workers run asynchronously with captured stdout/stderr, a 30-second default
+timeout, an 8 MiB output bound and at most four concurrent jobs. Customize
+`julia-workbench-documentation-timeout`, `julia-workbench-documentation-max-output`
+and `julia-workbench-documentation-max-jobs` for larger projects. Source-setting
+changes reject stale results; killing the help buffer or exiting Emacs terminates
+its workers. Failures identify a retained stderr log buffer. Local helpers and
+caches do not support remote projects; a custom Eglot contact can still supply
+persistent hover without a local Julia executable.
+
+```sh
+make test-documentation             # ERT unit checks, no Julia needed
+make test-documentation-integration # Actual Julia helpers, no server needed
+make check-documentation            # Also Julia assertions, live Eglot and lint
+```
+
+These checks exercise real help/search buffers and asynchronous process APIs in
+batch Emacs. Manual keyboard/Doom documentation validation is pending; no Doom
+configuration changes are included. See [COMPATIBILITY.md](COMPATIBILITY.md) for
+measured worker/cache latency and validation boundaries.
+
+### Standalone helper CLI
 
 This helper uses only Julia standard libraries. It accepts arguments as data;
 lookup queries cannot evaluate Julia expressions. Package names are selected
@@ -310,9 +380,9 @@ the helper's loaded standard-library documentation are included; docs from
 project dependencies are available once explicitly selected or loaded by a
 selected package. `apropos` searches Julia's process-wide documentation registry;
 each CLI invocation starts a fresh helper process. The Julia API
-returns structured results for the future Emacs adapter; the prototype CLI emits
-human-readable UTF-8 text. Asynchronous Emacs jobs, cancellation, caching and a
-results UI belong to the later documentation milestone.
+returns structured results, while the default CLI emits human-readable UTF-8
+text. The Emacs adapter passes `--protocol` to request versioned, base64-encoded
+UTF-8 fields and uses `names ''` for its documented-symbol completion index.
 
 ## License
 

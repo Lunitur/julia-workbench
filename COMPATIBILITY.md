@@ -1,7 +1,7 @@
 # Feasibility baseline
 
-Recorded 2026-10-01 on Linux/NixOS. Milestones 1 through 4 are complete; editing,
-project-aware Eglot and completion can be loaded from this checkout. Automated
+Recorded 2026-10-01 on Linux/NixOS. Milestones 1 through 5 are complete; editing,
+project-aware Eglot, completion and documentation can be loaded from this checkout. Automated
 completion GUI checks pass in vanilla Emacs and the current Doom configuration.
 Manual keyboard validation and the complete Doom migration are still pending.
 
@@ -166,14 +166,15 @@ diagnostic or copy older LanguageServer lint configuration into the new adapter.
 
 ## Documentation contract
 
-The standard-library-only prototype uses `Base.Docs.Binding` / `Base.Docs.doc`
+The standard-library-only helper uses `Base.Docs.Binding` / `Base.Docs.doc`
 with REPL loaded, and `InteractiveUtils.apropos` for documentation-text search.
 Version-sensitive documentation handling is isolated in `julia/documentation.jl`.
 
-38 assertions exercise unqualified/qualified Base names, macros, operators,
+57 assertions exercise unqualified/qualified Base names, macros, operators,
 `π`, signatures/doc text, literal search (including regex quoting), unknown and
 undocumented symbols, invalid expressions, empty queries/results, result limits,
-UTF-8 output, and selected package/standard-library docs. The fixture package has
+UTF-8 output, selected package/standard-library docs, named-symbol indexing,
+protocol validation and noisy package initialization. The fixture package has
 a unique docstring needle `quasarotter`, found only after explicit package loading.
 
 Queries are symbol names or literal search strings passed as arguments; query
@@ -183,8 +184,39 @@ loaded transitively. CLI invocations start fresh processes; they do not inherit
 a running REPL or load every project dependency. Lookup returns Markdown and a
 documented flag; a defined binding without a docstring gets Julia's summary and
 `found=false`. Search returns bounded, sorted, unique names and a truncation flag.
-The prototype CLI is human-readable; its Julia API supplies structured results
-for the future asynchronous Emacs adapter.
+The default CLI is human-readable; `--protocol` writes a versioned UTF-8/base64
+data format consumed by the asynchronous Emacs adapter. Selected package stdout
+is redirected to stderr during requests, keeping machine responses valid.
+
+Fourteen ERT unit fixtures cover protocol/cache validation, executable and
+project/manifest identity, literal argument vectors, Unicode results, cache-only
+ElDoc, process-free opening, result buttons/history/refresh, asynchronous name
+completion, empty/missing docs, captured failures, atomic cache preservation,
+timeouts, cancellation, output/concurrency limits, stale results and killed-buffer
+cleanup. Three real-helper fixtures cover Base/macros, selected Dates/project
+documentation, named completion, search-result lookup, standalone empty
+environments, missing packages, invalid expressions, environment separation and
+project-file invalidation. A timer and buffer edits advance while Julia runs.
+The live Eglot fixture additionally displays persistent help for a local function
+after BMP/astral text, with no source window and a missing local Julia executable.
+
+ElDoc keeps Eglot's existing connected providers and consumes cached helper docs
+elsewhere, without launching workers while typing. Fresh helpers are bounded by
+timeout, output size and concurrency. Successful jobs discard temporary output
+and stderr buffers; failures retain stderr logs and preserve previous cache files.
+Changing source settings rejects stale results. Result buttons retain captured
+scope; refresh resolves current settings. Language-server requests use Eglot's
+position and markup adapters in one isolated function, with JSON-RPC deadlines;
+cancellation/supersession discards their callbacks rather than stopping the server.
+
+Cache keys use executable path/size/mtime and helper/project/manifest contents,
+including versioned manifests, plus environment and package selection. Exported
+responses record the full Julia version. An unchanged wrapper that switches
+runtimes, or changed package source docs, requires explicit refresh. Local helper
+caches do not support remote projects. Rendering retains Markdown with basic
+fontification rather than requiring a Markdown package. The optional official
+manual search URL has an ERT construction check; browser interaction, manual
+keyboard use and Doom documentation behavior remain unvalidated.
 
 ## Timings
 
@@ -224,6 +256,21 @@ loading and the request. Warm calls are direct Julia API calls in one process;
 they do **not** establish latency for an unimplemented persistent service. These
 results support proceeding with bounded asynchronous helper jobs and caching.
 
+The milestone 5 live Emacs UI fixture measured these additional elapsed times,
+including asynchronous worker completion with existing precompile caches:
+
+| Documentation UI measurement | Time |
+| --- | ---: |
+| Fresh Base lookup | 1.626 s |
+| Identical cached lookup, no helper | 0.0013 s |
+| Fresh text search without selected packages | 2.599 s |
+| Fresh search with selected project package and Dates | 3.137 s |
+| Fresh name index followed by cached lookup | 1.490 s |
+
+Raw UI measurements are retained in `test/results/documentation-ui-timings.el`.
+Each fresh request has a separate process; these measurements do not establish
+persistent-helper latency or first-ever Julia precompilation time.
+
 ## Reproduction and validation boundaries
 
 ```sh
@@ -237,10 +284,11 @@ for setup/benchmark). Setup is explicit and writes its Project/Manifest and
 symbol caches to user-writable locations outside the checkout. Server launch
 and tests do not install packages. See [README.md](README.md) for path overrides.
 
-With the explicit Nix grammar path, `make check` passed 38 Julia assertions and
-32 ERT tests (14 editing, 15 environment/setup, two protocol and one live Eglot
-fixture), byte compilation with warnings treated as errors, and `checkdoc`
-without diagnostics. Whitespace checks passed. The earlier benchmark
+With the explicit Nix grammar path, `make check` passed 66 Julia assertions
+(57 documentation, nine Unicode) and 62 ERT tests (14 editing, 13 completion,
+15 environment/setup, 14 documentation unit, three live documentation, two
+protocol and one live Eglot fixture), byte compilation with warnings treated
+as errors, and `checkdoc` without diagnostics. Whitespace checks passed. The earlier benchmark
 contract passed against both empty and reused symbol caches; servers exited
 cleanly. Setup also succeeded on a repeat invocation; a separate temporary
 environment check confirmed that an unrelated Project/Manifest is not replaced.
@@ -250,6 +298,7 @@ Raw reports and logs are local, ignored artifacts:
 - `test/results/{empty-symbol-cache,reused-symbol-cache}/server-report.json`
   and the corresponding logs.
 - `test/results/documentation-timings.toml`.
+- `test/results/documentation-ui-timings.el`.
 - `test/results/eglot/{events,stderr}-N.log` and `setup.log`.
 
 Completion has automated graphical validation in vanilla Emacs and the current
