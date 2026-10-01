@@ -1,0 +1,3 @@
+*.elc
+test/results/
+__pycache__/
