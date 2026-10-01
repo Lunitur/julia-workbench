@@ -18,6 +18,12 @@
 (require 'cl-lib)
 (require 'treesit)
 
+(autoload 'julia-workbench-connect "julia-workbench-eglot" nil t)
+(autoload 'julia-workbench-reconnect "julia-workbench-eglot" nil t)
+(autoload 'julia-workbench-shutdown "julia-workbench-eglot" nil t)
+(autoload 'julia-workbench-setup-server "julia-workbench-eglot" nil t)
+(autoload 'julia-workbench-doctor "julia-workbench-eglot" nil t)
+
 (defgroup julia-workbench nil
   "Julia editing and development."
   :group 'languages

@@ -3,7 +3,7 @@
 include("paths.jl")
 using .WorkbenchPaths
 
-length(ARGS) == 1 || error("Usage: julia --startup-file=no --project=TOOLING julia/launch-server.jl PROJECT")
+length(ARGS) in (1, 2) || error("Usage: julia --startup-file=no --project=TOOLING julia/launch-server.jl PROJECT [SYMBOL_CACHE]")
 environment = abspath(ARGS[1])
 isfile(environment) && (environment = dirname(environment))
 any(isfile(joinpath(environment, name)) for name in ("JuliaProject.toml", "Project.toml")) ||
@@ -15,7 +15,7 @@ append!(LOAD_PATH, ["@", "@stdlib"])
 using LanguageServer
 pkgversion(LanguageServer) == WorkbenchPaths.SERVER_VERSION ||
     error("Expected LanguageServer $(WorkbenchPaths.SERVER_VERSION); run julia/setup-server.jl")
-cache = WorkbenchPaths.symbol_cache()
+cache = length(ARGS) == 2 ? abspath(ARGS[2]) : WorkbenchPaths.symbol_cache()
 mkpath(cache)
 println(stderr, "Julia Workbench: Julia $VERSION, LanguageServer $(pkgversion(LanguageServer))")
 println(stderr, "Analyzed environment: $environment; symbol cache: $cache")

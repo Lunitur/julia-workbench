@@ -1,0 +1,5 @@
+name = "WorkbenchOther"
+uuid = "1b19e680-6b32-4ef0-afb1-4e1cd2cc51f8"
+version = "0.1.0"
+
+[deps]
