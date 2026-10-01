@@ -1,8 +1,9 @@
 # Feasibility baseline
 
-Recorded 2026-10-01 on Linux/NixOS. Milestones 1 through 3 are complete; editing
-and project-aware Eglot integration can be loaded from this checkout.
-Interactive Doom/Corfu validation and Doom migration are still pending.
+Recorded 2026-10-01 on Linux/NixOS. Milestones 1 through 4 are complete; editing,
+project-aware Eglot and completion can be loaded from this checkout. Automated
+completion GUI checks pass in vanilla Emacs and the current Doom configuration.
+Manual keyboard validation and the complete Doom migration are still pending.
 
 ## Exercised combination
 
@@ -49,6 +50,46 @@ selection requires the grammar. The lexical fallback does not parse nested
 string literals inside interpolation. Incomplete-form indentation/navigation is
 best effort. Interactive Doom validation and the declared Emacs minimum remain
 pending.
+
+## Completion validation
+
+Thirteen ERT unit fixtures cover standard Emacs Unicode insertion, emoji,
+combining marks, subscripts/fractions, annotations and code-point documentation,
+code/comment/string contexts, escaped inputs, no runtime on open/completion,
+malformed caches, executable replacement, file paths/spaces/directories,
+provider ordering, actual asynchronous exports through fake runtimes, failures,
+cancellation, duplicate jobs, timeouts and preservation of a good cache.
+Nine Julia assertions compare the helper export to both complete runtime tables.
+Julia 1.13.1 provides 2,550 LaTeX and 1,242 emoji inputs, 3,792 combined.
+
+The live Eglot fixture runs the public asynchronous export with actual Julia,
+checks the resulting cache, then accepts Unicode in a managed buffer. Standard
+completion selection applies Eglot's server edits for `Base.sin` → `Base.sinh`
+after BMP/astral text, a named import, `Base.@tim` → `Base.@time`, and `Base.`
+with an empty identifier. It checks server-item properties, annotations,
+ordering metadata and rendered `sinh` documentation. Eglot advertises no snippet
+support in these clean tests; ordinary server edits use plain text. Package-name
+completion returned no candidates for the fixture's `using WorkbenchEx`; named
+imports work. No alternative package-name index has been added.
+
+Three optional graphical fixtures run in a fresh Emacs -Q with the installed
+Corfu 2.13/Compat, and in a fresh Emacs loading the user's existing Doom
+configuration with Corfu/Orderless. They assert visible completion and
+documentation child frames, readable Unicode/semantic popup contents, successful
+Unicode/emoji and space-containing path insertion, correctly positioned Eglot
+edits, synchronized hover and ElDoc argument signatures. The graphical checks
+drive the actual Corfu UI functions and process event loop; they do not simulate
+a human keyboard session or validate the future complete Doom migration.
+Result logs and protocol logs live in `test/results/corfu/` and
+`test/results/corfu-doom/`; see [README.md](README.md) for exact commands.
+
+Unicode caches contain validated UTF-8 TSV, with the exporting Julia version
+in the header. Their identity includes the resolved executable path, size and
+modification time. Opening files and invoking CAPFs never run a version probe
+or start Julia. A runtime changed behind an unchanged wrapper requires explicit
+refresh. Unicode setup has bounded jobs with timeout/cancellation cleanup and
+atomic cache replacement. Plain-string paths decline escapes/interpolation;
+these local helper/cache/path adapters do not support remote buffers.
 
 ## Eglot and project validation
 
@@ -211,9 +252,10 @@ Raw reports and logs are local, ignored artifacts:
 - `test/results/documentation-timings.toml`.
 - `test/results/eglot/{events,stderr}-N.log` and `setup.log`.
 
-No interactive Emacs completion UI, REPL integration, minimum-version check
-or Doom runtime validation has occurred yet. Tree-sitter editing and Eglot
-major-mode connections have automated fixtures as described above.
+Completion has automated graphical validation in vanilla Emacs and the current
+Doom runtime as described above. No manual keyboard session, REPL integration,
+minimum-version check or complete Doom migration validation has occurred yet.
+Tree-sitter editing and Eglot major-mode connections have automated fixtures.
 
 ## Upstream API references
 

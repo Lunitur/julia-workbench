@@ -1,8 +1,8 @@
 # Julia Workbench
 
-A Julia Emacs package under development. Editing, project-aware Eglot integration
-and the server/docs feasibility checks are implemented. Unicode completion,
-documentation UI and REPL integration follow in
+A Julia Emacs package under development. Editing, project-aware Eglot integration,
+semantic/path/Unicode completion and server/docs feasibility checks are
+implemented. Documentation UI and REPL integration follow in
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
 The namespace is `julia-workbench`; this checkout does not replace the
@@ -59,6 +59,80 @@ JULIA_WORKBENCH_GRAMMAR_PATH="$HOME/.config/emacs/.local/etc/tree-sitter" \
 Without a discoverable grammar, structural ERT tests report skips. An explicit
 `JULIA_WORKBENCH_GRAMMAR_PATH` that cannot load the Julia grammar fails the run.
 See below for the Nix command when Make is unavailable.
+
+## Completion
+
+Run `M-x julia-workbench-setup-unicode` once to asynchronously export the selected
+`julia-workbench-julia-command` runtime's LaTeX and emoji input table. This uses
+Julia's REPL standard library, installs no packages and writes a validated cache
+under `julia-workbench-cache-directory` (default
+`${XDG_CACHE_HOME:-~/.cache}/julia-workbench/unicode/`). Export logs appear in a
+setup buffer. Cancel with `M-x julia-workbench-cancel-unicode-setup`; failures,
+timeouts and cancellation preserve any previous cache. Customize
+`julia-workbench-unicode-setup-timeout` for a slower runtime.
+
+Use `M-TAB` (`completion-at-point`) on `\alpha`, `\_2`, `\hat` or `\:smile:`
+to insert `α`, `₂`, a combining circumflex or `😄`. Partial inputs offer candidates
+with glyph annotations; accepting a candidate converts it to Unicode. Inputs
+work in code, comments and strings, without Eglot. Corfu's documentation popup
+shows the input name, Julia version and each character's Unicode name/code point.
+The data comes from the installed Julia runtime, matching its
+[Unicode input and REPL completion](https://docs.julialang.org/en/v1/stdlib/REPL/#Tab-completion)
+tables rather than a separately maintained editor copy.
+
+Caches are tied to the executable's resolved path, size and modification time;
+the export records the full Julia version. Repeat setup after changing a runtime
+behind an unchanged launcher script (for example a version-manager wrapper).
+Missing/corrupt data leaves other completion providers available. Opening a
+buffer and invoking completion never launch Julia. Helpers and caches work
+locally; remote completion still needs a custom semantic server contact.
+
+With Eglot connected, semantic candidates, annotations, ordering, documentation
+and edit ranges come directly from its CAPF. Unicode and path providers run
+before it and decline other contexts, preserving unrelated buffer-local CAPFs.
+Paths complete in plain double-quoted strings, relative to `default-directory`,
+including spaces and continuation into directories. Strings containing escapes
+or interpolation are left to the semantic provider. No completion UI is required;
+Corfu and its popupinfo extension consume the ordinary CAPF properties.
+
+For optional Corfu use in vanilla Emacs, after installing it separately:
+
+```elisp
+(add-hook 'julia-workbench-mode-hook #'corfu-mode)
+(with-eval-after-load 'corfu
+  (require 'corfu-popupinfo)
+  (corfu-popupinfo-mode 1))
+```
+
+Ordinary completions need no snippet package. Eglot advertises snippet support
+according to its available expansion backend; Workbench preserves that behavior.
+The tested server provides plain-text completion edits. Qualified names, named
+imports, macros, dot triggers and incomplete expressions have live tests.
+Package-name completion remains subject to the server: it did not offer the
+fixture package for `using WorkbenchEx`, although `using Base: sin` offered `sinh`.
+Argument signatures use Eglot's ElDoc provider.
+
+```sh
+make test-completion          # Unit tests; Julia and Corfu not required
+make check-completion         # Also real Julia/Eglot, byte compilation and lint
+# Optional actual child-frame checks in a separate graphical Emacs:
+make test-corfu-ui CORFU_LOAD_PATH="/path/to/corfu /path/to/corfu/extensions /path/to/compat"
+```
+
+The GUI tests have also passed with this user's existing Doom/Corfu/Orderless
+configuration loaded in a fresh process. They create actual completion and
+documentation child frames and accept semantic, Unicode/emoji and file
+candidates, including after BMP/astral text. Logs are retained in
+`test/results/corfu/` and `test/results/corfu-doom/`. These are automated GUI
+checks; a manual keyboard session and the later Doom migration remain separate.
+To repeat the current Doom check without changing its configuration:
+
+```sh
+JULIA_WORKBENCH_CORFU_RESULTS=corfu-doom \
+  emacs --init-directory "$HOME/.config/emacs" -L . -L test \
+  --eval '(setq load-prefer-newer t)' -l test/completion-corfu-tests.el \
+  --eval '(run-at-time 2 nil (function workbench-corfu-run))'
+```
 
 ## Eglot and environments
 
@@ -140,7 +214,8 @@ Test fixtures explicitly use a POSIX shell for project.el file listing and start
 Flymake directly because batch Emacs has no interactive command loop. The
 generated fixture directory alone is trusted for the tests. If Flymake disables
 its backend in your session, inspect `trusted-content`; the package leaves that
-setting to Emacs. Interactive Doom/Corfu validation remains a later milestone.
+setting to Emacs. Completion GUI checks are described above; full Doom migration
+validation remains a later milestone.
 
 An environment override selects the server's active environment argument.
 LanguageServer 6 still applies its own per-file workspace/package resolution;

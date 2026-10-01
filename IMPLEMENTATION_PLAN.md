@@ -1,10 +1,11 @@
 # Julia Workbench implementation plan
 
-Status: milestones 1 through 3 completed on 2026-10-01. The isolated server
+Status: milestones 1 through 4 completed on 2026-10-01. The isolated server
 launcher, documentation prototype, real-server fixtures, editing major mode and
-project-aware Eglot integration are implemented. Completion UI and Unicode CAPF
-start at milestone 4; Doom migration remains pending until the replacement
-passes its later milestones.
+project-aware Eglot integration, semantic/path completion and Unicode CAPF are
+implemented. Completion popups have automated graphical checks in vanilla Emacs
+and the current Doom configuration. Documentation UI starts at milestone 5;
+Doom migration remains pending until the replacement passes its later milestones.
 
 ## Progress
 
@@ -31,8 +32,16 @@ passes its later milestones.
   fixture cover isolation/sharing, package hover, Flymake, Xref, Unicode rename,
   formatting, process crashes and changed-environment reconnect. See
   [README.md](README.md) and [COMPATIBILITY.md](COMPATIBILITY.md).
-- [ ] 4. Completion UI and Unicode CAPF (next).
-- [ ] 5. Asynchronous documentation UI, search and caching.
+- [x] 4. Completion UI and Unicode CAPF: explicit asynchronous export of the
+  selected runtime's 3,792 LaTeX/emoji inputs, validated writable caches,
+  glyph/code-point documentation and plain-string path completion. Eglot's
+  CAPF remains intact, with local provider ordering restored after connection
+  changes. Thirteen unit fixtures, nine Julia assertions and expanded live
+  Eglot checks cover insertions, semantic docs, imports/macros/dot triggers,
+  Unicode positions, failures, cancellation and timeout cleanup. Three optional
+  GUI fixtures show completion/documentation child frames and accept candidates
+  in Emacs -Q and the user's current Doom/Corfu/Orderless setup.
+- [ ] 5. Asynchronous documentation UI, search and caching (next).
 - [ ] 6. Project REPL and evaluation.
 - [ ] 7. Doom migration after validation.
 - [ ] 8. Package and release validation.
@@ -89,7 +98,8 @@ Start with these files; split further only if the code warrants it:
 
 | File | Responsibility |
 | --- | --- |
-| `julia-workbench.el` | Public configuration, major mode, syntax, tree-sitter editing, Unicode CAPF |
+| `julia-workbench.el` | Public configuration, major mode, syntax and tree-sitter editing |
+| `julia-workbench-completion.el` | Unicode cache/export lifecycle, Unicode/path CAPFs and Eglot provider ordering |
 | `julia-workbench-eglot.el` | Project/environment resolution, server contact, lifecycle and setup diagnostics |
 | `julia-workbench-doc.el` | Documentation lookup, search, results buffers and caching |
 | `julia-workbench-repl.el` | Project-scoped comint sessions and evaluation commands |
@@ -204,6 +214,33 @@ reported as capabilities, not interactive feature validation.
 
 Exit criterion: successful, correctly positioned insertions and readable popup
 documentation in both standard Emacs completion and Doom/Corfu.
+
+Implemented in `julia-workbench-completion.el`, `julia/unicode.jl` and the
+completion fixtures. `M-x julia-workbench-setup-unicode` explicitly exports the
+selected runtime's standard-library data; opening files and invoking CAPFs never
+start Julia. UTF-8 TSV caches are validated as data and replaced atomically;
+failed/cancelled jobs preserve the old table. Cache identities use the resolved
+executable path, size and modification time, with the Julia version in the
+export header. Refresh explicitly when a wrapper switches runtimes without
+changing its own identity. Reconnect clears parsed completion tables.
+
+Unicode and path providers precede Eglot locally and decline unsupported
+contexts or unmatched inputs. No semantic table merging, candidate rewriting,
+sort overrides or snippet dependency is introduced. Plain-string file completion
+declines escapes/interpolation; remote caches/paths are not supported. The
+selected server offers named imports (`using Base: sinh`), but did not offer
+the fixture package itself in a `using WorkbenchEx` package-name query. This
+upstream limitation is recorded without adding a second semantic provider.
+
+`make check-completion` exercises unit/export/live Eglot checks and lint. The
+optional `make test-corfu-ui` target accepts installed Corfu/Compat load paths.
+The same GUI fixtures also passed in a fresh process loading the actual current
+Doom configuration: semantic and Unicode documentation popups, path insertion
+with spaces, Unicode-positioned server edits, hover after synchronization and
+ElDoc argument signatures. Logs are in `test/results/corfu/` and
+`test/results/corfu-doom/`. These are automated GUI interactions, not a manual
+keyboard session. Doom configuration and package declarations remain unchanged;
+full migration/lookup/REPL validation still belongs to milestone 7.
 
 ### 5. Deliver documentation lookup and search
 
