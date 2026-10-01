@@ -42,7 +42,7 @@
     (goto-char (point-min))
     (search-forward needle)
     (backward-char (length needle))
-    ;; Keep protocol-specific glue isolated here; production uses public Eglot.
+    ;; Use the same position adapter as persistent documentation requests.
     (eglot--request (eglot-current-server) :textDocument/hover
                     (eglot--TextDocumentPositionParams) :timeout 90)))
 
@@ -173,6 +173,17 @@ Use SUBDIRECTORY under results, default eglot."
             (should (string-match-p "twice" (prin1-to-string
                                               (workbench-eglot-integration-hover
                                                first-buffer "twice(α)"))))
+            ;; Persistent help also works for a buffer-local function unavailable
+            ;; to a fresh helper, with no source window or local Julia needed.
+            (let ((julia-workbench-julia-command "missing-local-julia"))
+              (julia-workbench-documentation-at-point)
+              (workbench-eglot-integration-wait
+               (lambda ()
+                 (with-current-buffer "*Julia Documentation*"
+                   (string-match-p "Current language-server workspace" (buffer-string))))))
+            (with-current-buffer "*Julia Documentation*"
+              (should (string-match-p "Current language-server workspace" (buffer-string)))
+              (should (string-match-p "twice" (buffer-string))))
             (let* ((backend (xref-find-backend))
                    (definitions (xref-backend-definitions backend "twice")))
               (should definitions)
@@ -250,6 +261,7 @@ Use SUBDIRECTORY under results, default eglot."
             (julia-workbench-shutdown)
             (should-not (eglot-managed-p))))
       (workbench-eglot-integration-save-logs servers)
+      (when-let* ((buffer (get-buffer "*Julia Documentation*"))) (kill-buffer buffer))
       (dolist (server servers)
         (when (jsonrpc-running-p server) (ignore-errors (eglot-shutdown server))))
       (dolist (buffer buffers)

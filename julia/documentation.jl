@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"Standard-library documentation prototype; queries are names, never Julia code."
+"Standard-library documentation helper; queries are names, never Julia code."
 module WorkbenchDocs
 
 using REPL
 using Markdown
 using InteractiveUtils: apropos
+using Base64: base64encode
 
-export Context, lookup, search, main
+export Context, lookup, search, symbol_names, main
 
 struct Context
     roots::Dict{String,Module}
@@ -20,6 +21,11 @@ function Context(packages::Vector{String}=String[])
         Base.isidentifier(package) || throw(ArgumentError("Expected a package name: $package"))
         # Explicit package selection is the only place package code is loaded.
         roots[package] = Base.require(Main, Symbol(package))
+    end
+    # apropos includes documentation loaded transitively by selected packages
+    # and helper stdlibs. Make those qualified results resolvable as well.
+    for (id, mod) in Base.loaded_modules
+        get!(roots, id.name, mod)
     end
     Context(roots, unique(packages))
 end
@@ -39,7 +45,7 @@ function binding(context::Context, query::AbstractString)
     all(Base.isidentifier, parts[1:end-1]) || throw(ArgumentError("Invalid module path: $query"))
     if length(parts) == 1
         symbol = Symbol(name)
-        for mod in (Main, Base, Core)
+        for mod in (Main, Base, Core, (context.roots[p] for p in context.packages)...)
             isdefined(mod, symbol) && return Base.Docs.Binding(mod, symbol)
         end
         return nothing
@@ -83,12 +89,58 @@ function search(context::Context, query::AbstractString; limit::Int=100)
        truncated=length(symbols) > limit, scope=scope(context))
 end
 
+function symbol_names(context::Context)
+    symbols = String[]
+    # This version-sensitive adapter reads Julia's already loaded doc registry,
+    # including nested modules. It neither imports nor evaluates query text.
+    for mod in Base.Docs.modules
+        metadata = Base.Docs.meta(mod; autoinit=false)
+        metadata === nothing && continue
+        for target in keys(metadata)
+            target isa Base.Docs.Binding || continue
+            name = string(target)
+            try
+                binding(context, name) === nothing || push!(symbols, name)
+            catch error
+                error isa ArgumentError || rethrow()
+            end
+        end
+    end
+    (; symbols=sort!(unique(symbols)), truncated=false, scope=scope(context))
+end
+
+"Write a versioned data-only protocol; base64 preserves multiline UTF-8 fields."
+function write_protocol(output::IO, command, result)
+    println(output, "julia-workbench-doc-v1\t", VERSION, '\t', command)
+    field(name, value) = println(output, name, '\t', base64encode(value))
+    field("Scope", result.scope)
+    if command == "lookup"
+        field("Symbol", result.symbol)
+        println(output, "Documented\t", result.found)
+        field("Markdown", result.markdown)
+    else
+        println(output, "Truncated\t", result.truncated)
+        foreach(symbol -> field("Name", symbol), result.symbols)
+    end
+end
+
 function main(args=ARGS; output::IO=stdout)
-    length(args) >= 2 || throw(ArgumentError("Usage: documentation.jl lookup|search QUERY [PACKAGE ...]"))
+    protocol = !isempty(args) && first(args) == "--protocol"
+    protocol && (args = args[2:end])
+    length(args) >= 2 || throw(ArgumentError("Usage: documentation.jl [--protocol] lookup|search|names QUERY [PACKAGE ...]"))
     command, query = args[1:2]
-    command in ("lookup", "search") || throw(ArgumentError("Unknown command: $command"))
-    context = Context(String.(args[3:end]))
-    result = command == "lookup" ? lookup(context, query) : search(context, query)
+    command in ("lookup", "search", "names") || throw(ArgumentError("Unknown command: $command"))
+    # A selected package may print at load time. Keep that output in captured
+    # stderr logs rather than corrupting the protocol on stdout.
+    result = redirect_stdout(stderr) do
+        context = Context(String.(args[3:end]))
+        command == "lookup" ? lookup(context, query) :
+            command == "search" ? search(context, query) : symbol_names(context)
+    end
+    if protocol
+        write_protocol(output, command, result)
+        return result
+    end
     println(output, "Scope: ", result.scope)
     if command == "lookup"
         println(output, "Symbol: ", result.symbol)

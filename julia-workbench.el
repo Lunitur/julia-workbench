@@ -26,6 +26,12 @@
 (autoload 'julia-workbench-setup-unicode "julia-workbench-completion" nil t)
 (autoload 'julia-workbench-cancel-unicode-setup "julia-workbench-completion" nil t)
 (autoload 'julia-workbench--setup-completion "julia-workbench-completion")
+(autoload 'julia-workbench--setup-documentation "julia-workbench-doc")
+(autoload 'julia-workbench-documentation "julia-workbench-doc" nil t)
+(autoload 'julia-workbench-documentation-at-point "julia-workbench-doc" nil t)
+(autoload 'julia-workbench-documentation-search "julia-workbench-doc" nil t)
+(autoload 'julia-workbench-documentation-select-packages "julia-workbench-doc" nil t)
+(autoload 'julia-workbench-documentation-manual-search "julia-workbench-doc" nil t)
 
 (defgroup julia-workbench nil
   "Julia editing and development."
@@ -364,6 +370,9 @@ Requires Git and a C compiler.  Prefer an existing system grammar on
   (let ((map (make-sparse-keymap)))
     (keymap-set map "C-c C-SPC" #'julia-workbench-mark-top-level)
     (keymap-set map "C-c C-e" #'julia-workbench-mark-node)
+    (keymap-set map "C-c C-d" #'julia-workbench-documentation-at-point)
+    (keymap-set map "C-c C-h" #'julia-workbench-documentation)
+    (keymap-set map "C-c C-s" #'julia-workbench-documentation-search)
     map)
   "Keymap for `julia-workbench-mode'.")
 
@@ -382,6 +391,7 @@ executable or server is launched when entering this mode."
               font-lock-defaults '(julia-workbench--font-lock-keywords)
               syntax-propertize-function #'julia-workbench--syntax-propertize)
   (julia-workbench--setup-completion)
+  (julia-workbench--setup-documentation)
   (add-hook 'syntax-propertize-extend-region-functions
             #'syntax-propertize-multiline nil t)
   (add-hook 'syntax-propertize-extend-region-functions

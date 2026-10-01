@@ -1,15 +1,21 @@
 JULIA ?= julia
 EMACS ?= emacs
 
-.PHONY: setup-server test test-editing test-completion test-corfu-ui test-unicode test-eglot test-eglot-integration test-docs test-server benchmark check check-editing check-completion check-eglot byte-compile checkdoc
+.PHONY: setup-server test test-editing test-completion test-corfu-ui test-unicode test-eglot test-eglot-integration test-docs test-documentation test-documentation-integration test-server benchmark check check-editing check-completion check-documentation check-eglot byte-compile checkdoc
 
-ELISP = julia-workbench.el julia-workbench-completion.el julia-workbench-eglot.el test/editing-tests.el test/completion-tests.el test/eglot-tests.el test/eglot-integration-tests.el test/server-tests.el
+ELISP = julia-workbench.el julia-workbench-completion.el julia-workbench-eglot.el julia-workbench-doc.el test/editing-tests.el test/completion-tests.el test/eglot-tests.el test/eglot-integration-tests.el test/documentation-ui-tests.el test/documentation-integration-tests.el test/server-tests.el
 
 setup-server:
 	$(JULIA) --startup-file=no julia/setup-server.jl
 
 test-docs:
 	$(JULIA) --startup-file=no --project=test/fixtures/Example test/documentation-tests.jl
+
+test-documentation:
+	$(EMACS) -Q --batch -L . --eval '(setq load-prefer-newer t)' -l test/documentation-ui-tests.el -f ert-run-tests-batch-and-exit
+
+test-documentation-integration:
+	JULIA="$(JULIA)" $(EMACS) -Q --batch -L . --eval '(setq load-prefer-newer t)' -l test/documentation-integration-tests.el -f ert-run-tests-batch-and-exit
 
 test-server:
 	JULIA="$(JULIA)" $(EMACS) -Q --batch -l test/server-tests.el -f ert-run-tests-batch-and-exit
@@ -33,7 +39,7 @@ test-corfu-ui:
 test-eglot-integration:
 	JULIA="$(JULIA)" $(EMACS) -Q --batch -L . --eval '(setq load-prefer-newer t)' -l test/eglot-integration-tests.el -f ert-run-tests-batch-and-exit
 
-test: test-editing test-completion test-unicode test-eglot test-docs test-server test-eglot-integration
+test: test-editing test-completion test-unicode test-eglot test-docs test-documentation test-documentation-integration test-server test-eglot-integration
 
 benchmark:
 	$(JULIA) --startup-file=no --project=test/fixtures/Example test/documentation-benchmark.jl
@@ -48,6 +54,8 @@ checkdoc:
 check-editing: test-editing byte-compile checkdoc
 
 check-completion: test-completion test-unicode test-eglot-integration byte-compile checkdoc
+
+check-documentation: test-documentation test-docs test-documentation-integration test-eglot-integration byte-compile checkdoc
 
 check-eglot: test-eglot test-eglot-integration byte-compile checkdoc
 
