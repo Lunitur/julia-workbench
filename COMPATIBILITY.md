@@ -58,12 +58,15 @@ pending.
 
 ## Completion validation
 
-Thirteen ERT unit fixtures cover standard Emacs Unicode insertion, emoji,
+Fifteen ERT unit fixtures cover standard Emacs Unicode insertion, emoji,
 combining marks, subscripts/fractions, annotations and code-point documentation,
 code/comment/string contexts, escaped inputs, no runtime on open/completion,
 malformed caches, executable replacement, file paths/spaces/directories,
 provider ordering, actual asynchronous exports through fake runtimes, failures,
 cancellation, duplicate jobs, timeouts and preservation of a good cache.
+Signature display tests retain the semantic table and edit callback, show
+typed details without a docstring, and fall back from a bare kind to a documented
+signature. Management changes preserve provider order without duplicates.
 Nine Julia assertions compare the helper export to both complete runtime tables.
 Julia 1.13.1 provides 2,550 LaTeX and 1,242 emoji inputs, 3,792 combined.
 
@@ -77,7 +80,7 @@ support in these clean tests; ordinary server edits use plain text. Package-name
 completion returned no candidates for the fixture's `using WorkbenchEx`; named
 imports work. No alternative package-name index has been added.
 
-Three optional graphical fixtures run in a fresh Emacs -Q with the installed
+Four optional graphical fixtures run in a fresh Emacs -Q with the installed
 Corfu 2.13/Compat, and in a fresh Emacs loading the user's existing Doom
 configuration with Corfu/Orderless. They assert visible completion and
 documentation child frames, readable Unicode/semantic popup contents, successful
@@ -87,6 +90,21 @@ drive the actual Corfu UI functions and process event loop; they do not simulate
 a human keyboard session. Installed-package migration checks are recorded below.
 Result logs and protocol logs live in `test/results/corfu/` and
 `test/results/corfu-doom/`; see [README.md](README.md) for exact commands.
+
+The October 3 follow-up passed all four graphical fixtures in vanilla Emacs
+and the user's Doom/Orderless configuration. An actual inserted keyboard
+character triggers automatic completion; a function without a docstring shows
+`typed_value(x::Int, label::AbstractString)::String` in the candidate popup,
+then Eglot provides typed argument help inside the call. Automatic UI settings
+remain local to Julia buffers and can be disabled. Doom fixtures enter Evil
+insert state before typing. Logs for that run are in
+`test/results/corfu-doom-features/`.
+
+Imenu and workspace-symbol checks cover multiline typed declarations, return
+types, `where` constraints and preserved navigation positions. Imenu retains
+Eglot's symbol metadata. Workspace results read declarations in Eglot's existing
+source buffers, including temporary buffers, without visiting files or running
+mode hooks. These labels describe declared types; they do not infer new types.
 
 Unicode caches contain validated UTF-8 TSV, with the exporting Julia version
 in the header. Their identity includes the resolved executable path, size and

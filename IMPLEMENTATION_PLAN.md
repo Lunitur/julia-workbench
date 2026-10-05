@@ -43,10 +43,11 @@ needs a restart; manual keyboard and minimum-version/release checks remain pendi
 - [x] 4. Completion UI and Unicode CAPF: explicit asynchronous export of the
   selected runtime's 3,792 LaTeX/emoji inputs, validated writable caches,
   glyph/code-point documentation and plain-string path completion. Eglot's
-  CAPF remains intact, with local provider ordering restored after connection
-  changes. Thirteen unit fixtures, nine Julia assertions and expanded live
+  completion table and edit callbacks are preserved by a signature-display
+  adapter, with local provider ordering restored after connection changes.
+  Fifteen unit fixtures, nine Julia assertions and expanded live
   Eglot checks cover insertions, semantic docs, imports/macros/dot triggers,
-  Unicode positions, failures, cancellation and timeout cleanup. Three optional
+  Unicode positions, failures, cancellation and timeout cleanup. Four optional
   GUI fixtures show completion/documentation child frames and accept candidates
   in Emacs -Q and the user's current Doom/Corfu/Orderless setup.
 - [x] 5. Asynchronous documentation UI, search and caching: bounded,

@@ -29,6 +29,12 @@ server for editing. It does not install packages or grammars on opening files.
 With a Julia tree-sitter grammar, the mode provides syntax highlighting,
 four-space indentation (customize `julia-workbench-indent-offset`), Imenu, and
 `C-M-a` / `C-M-e` definition navigation, including short-form methods.
+Imenu labels include declared argument and return types, `where` constraints
+and symbol kinds. This also works with Eglot's Imenu and frontends such as
+Consult. Workspace symbol search (`M-x xref-find-apropos`) shows the same
+declaration details and keeps Eglot's original jump locations. Source declarations
+provide the types; untyped arguments have no inferred type added. Without the
+grammar, connected symbol navigation still shows the server's symbol kinds.
 `C-c C-SPC` selects the containing top-level form; `C-c C-e` selects a syntax
 node and expands an active selection to its parent. Multiline string and comment
 contents retain their indentation. Parsing errors permit continued editing;
@@ -89,17 +95,29 @@ buffer and invoking completion never launch Julia. Helpers and caches work
 locally; remote completion still needs a custom semantic server contact.
 
 With Eglot connected, semantic candidates, annotations, ordering, documentation
-and edit ranges come directly from its CAPF. Unicode and path providers run
-before it and decline other contexts, preserving unrelated buffer-local CAPFs.
+and edit ranges come from its CAPF. A small adapter adds available signatures
+to candidate documentation and echoes them after acceptance. With the grammar,
+local declarations provide typed signatures even when a function has no
+docstring. Unicode and path providers run before it and decline other contexts,
+preserving unrelated buffer-local CAPFs.
 Paths complete in plain double-quoted strings, relative to `default-directory`,
 including spaces and continuation into directories. Strings containing escapes
 or interpolation are left to the semantic provider. No completion UI is required;
 Corfu and its popupinfo extension consume the ordinary CAPF properties.
 
-For optional Corfu use in vanilla Emacs, after installing it separately:
+When Corfu is installed, Julia buffers enable it automatically: completion opens
+after two characters and a 0.2-second pause, with Eglot's dot and macro triggers
+also supported. Installed `corfu-popupinfo` shows documentation and signatures
+as you select a candidate. These settings apply only to Julia buffers. Set
+`julia-workbench-automatic-completion` to nil before opening a buffer to keep
+your own UI configuration. No completion UI is installed by the package.
+
+For manual Corfu configuration instead:
 
 ```elisp
-(add-hook 'julia-workbench-mode-hook #'corfu-mode)
+(setq julia-workbench-automatic-completion nil)
+(add-hook 'julia-workbench-mode-hook
+          (lambda () (setq-local corfu-auto t) (corfu-mode 1)))
 (with-eval-after-load 'corfu
   (require 'corfu-popupinfo)
   (corfu-popupinfo-mode 1))
@@ -111,7 +129,8 @@ The tested server provides plain-text completion edits. Qualified names, named
 imports, macros, dot triggers and incomplete expressions have live tests.
 Package-name completion remains subject to the server: it did not offer the
 fixture package for `using WorkbenchEx`, although `using Base: sin` offered `sinh`.
-Argument signatures use Eglot's ElDoc provider.
+While filling function arguments, Eglot's ElDoc provider displays method
+signatures and highlights the active argument after `(` and `,`.
 
 ```sh
 make test-completion          # Unit tests; Julia and Corfu not required
