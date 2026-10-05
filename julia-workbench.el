@@ -46,6 +46,7 @@
 (autoload 'julia-workbench-send-dwim "julia-workbench-repl" nil t)
 (autoload 'julia-workbench-repl-documentation "julia-workbench-repl" nil t)
 (autoload 'julia-workbench-repl-complete "julia-workbench-repl" nil t)
+(autoload 'julia-workbench-show-plots "julia-workbench-repl" nil t)
 
 (defgroup julia-workbench nil
   "Julia editing and development."
@@ -464,6 +465,7 @@ Requires Git and a C compiler.  Prefer an existing system grammar on
     (keymap-set map "C-c C-h" #'julia-workbench-documentation)
     (keymap-set map "C-c C-s" #'julia-workbench-documentation-search)
     (keymap-set map "C-c C-z" #'julia-workbench-repl)
+    (keymap-set map "C-c C-p" #'julia-workbench-show-plots)
     (keymap-set map "C-c C-l" #'julia-workbench-send-line)
     (keymap-set map "C-c C-r" #'julia-workbench-send-region)
     (keymap-set map "C-c C-c" #'julia-workbench-send-dwim)

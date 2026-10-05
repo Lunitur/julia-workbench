@@ -12,6 +12,7 @@
 ;;; Code:
 
 (require 'julia-workbench-eglot)
+(require 'julia-workbench-plot)
 (require 'comint)
 (require 'help-mode)
 
@@ -68,10 +69,16 @@ options to Workbench.  Changing this list selects a distinct session."
                  (concat "standalone/repl/"
                          (secure-hash 'sha256 (prin1-to-string (list root executable))))
                  (julia-workbench-project-cache project))))
-           (key (list root environment executable (copy-sequence julia-workbench-repl-arguments))))
+           (formats (julia-workbench--plot-formats))
+           (_ (unless (and (integerp julia-workbench-plot-max-bytes)
+                           (> julia-workbench-plot-max-bytes 0))
+                (user-error "Julia plot byte limit must be a positive integer")))
+           (key (list root environment executable (copy-sequence julia-workbench-repl-arguments)
+                      formats julia-workbench-plot-max-bytes)))
       (list :key key :root root :environment environment :executable executable
             :arguments (copy-sequence julia-workbench-repl-arguments)
             :cache (julia-workbench-project-cache project)
+            :plot-formats formats :plot-max-bytes julia-workbench-plot-max-bytes
             :standalone (null (julia-workbench-project-environment project))))))
 
 (defun julia-workbench--repl-history ()
@@ -102,7 +109,8 @@ options to Workbench.  Changing this list selects a distinct session."
       (when (eq (gethash key julia-workbench--repl-sessions) (current-buffer))
         (remhash key julia-workbench--repl-sessions))))
   (when-let* ((process (get-buffer-process (current-buffer))))
-    (delete-process process)))
+    (delete-process process))
+  (julia-workbench--plot-cleanup))
 
 (defun julia-workbench--repl-sentinel (process event)
   "Update session status and preserve history for PROCESS and EVENT."
@@ -147,6 +155,9 @@ options to Workbench.  Changing this list selects a distinct session."
                  (text (decode-coding-string (base64-decode-string (nth 4 fields)) 'utf-8))
                  (request julia-workbench--repl-pending))
             (cond
+             ((and (equal id "0") (equal kind "plot") ok
+                   (memq julia-workbench--repl-state '(idle busy)))
+              (julia-workbench--plot-receive text))
              ((and (equal id "0") (equal kind "ready")
                    (eq julia-workbench--repl-state 'starting) ok)
               (setq julia-workbench--repl-state 'idle julia-workbench--repl-version text)
@@ -209,6 +220,7 @@ options to Workbench.  Changing this list selects a distinct session."
     (keymap-set map "C-c C-c" #'julia-workbench-repl-interrupt)
     (keymap-set map "C-c C-r" #'julia-workbench-repl-restart)
     (keymap-set map "C-c C-d" #'julia-workbench-repl-documentation)
+    (keymap-set map "C-c C-p" #'julia-workbench-show-plots)
     (keymap-set map "C-j" #'comint-accumulate)
     (keymap-set map "M-TAB" #'julia-workbench-repl-complete)
     map)
@@ -254,6 +266,7 @@ Runtime lookup/completion query Main."
         (with-temp-file (expand-file-name "Project.toml" environment) (insert "[deps]\n"))))
     (make-directory (file-name-directory history) t)
     (with-current-buffer buffer
+      (julia-workbench--plot-cleanup)
       (julia-workbench-repl-mode)
       (setq default-directory (plist-get context :root)
             julia-workbench--repl-context context julia-workbench--repl-token token
@@ -263,6 +276,17 @@ Runtime lookup/completion query Main."
           (let* ((process-connection-type nil)
                  (process-environment (copy-sequence process-environment))
                  (_ (progn
+                      (when (plist-get context :plot-formats)
+                        (let ((root (expand-file-name "plots" (plist-get context :cache))))
+                          (make-directory root t)
+                          (setq julia-workbench--plot-directory
+                                (make-temp-file (expand-file-name "session-" root) t))))
+                      (setenv "JULIA_WORKBENCH_PLOT_DIRECTORY" julia-workbench--plot-directory)
+                      (setenv "JULIA_WORKBENCH_PLOT_FORMATS"
+                              (mapconcat #'symbol-name (plist-get context :plot-formats) ","))
+                      (setenv "JULIA_WORKBENCH_PLOT_MAX_BYTES"
+                              (number-to-string (or (plist-get context :plot-max-bytes)
+                                                    julia-workbench-plot-max-bytes)))
                       (setenv "TERM" "dumb")
                       (setenv "JULIA_LOAD_PATH" (concat "@" path-separator "@stdlib"))
                       (apply #'make-comint-in-buffer "julia-workbench-repl" buffer
@@ -282,6 +306,7 @@ Runtime lookup/completion query Main."
                                #'julia-workbench--repl-deadline buffer process))
             (puthash key buffer julia-workbench--repl-sessions))
         (error (setq julia-workbench--repl-state 'stopped)
+               (julia-workbench--plot-cleanup)
                (signal (car err) (cdr err)))))
     buffer))
 

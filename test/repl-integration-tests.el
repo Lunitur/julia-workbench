@@ -232,5 +232,49 @@
       (workbench-repl-live-wait buffer)
       (should (equal (workbench-repl-live-eval buffer "RuntimeModule.add_one(41)") "42")))))
 
+(ert-deftest workbench-repl-live-plots-and-lifecycle ()
+  "Capture rich results, explicit and asynchronous displays in an isolated session."
+  (skip-unless (image-type-available-p 'svg))
+  (workbench-repl-live-fixture
+    (let* ((julia-workbench-plot-formats '(svg))
+           (buffer (julia-workbench--repl-buffer t))
+           (julia-workbench-plot-history-limit 4))
+      (workbench-repl-live-eval
+       buffer (concat "struct LiveFigure end; "
+                      "Base.show(io::IO, ::MIME\"image/svg+xml\", ::LiveFigure) = "
+                      "print(io, \"<svg xmlns=\\\"http://www.w3.org/2000/svg\\\" width=\\\"200\\\" height=\\\"100\\\"><text>α 🐈</text></svg>\"); "
+                      "LiveFigure()"))
+      (with-current-buffer buffer
+        (should (= (length julia-workbench--plot-history) 1))
+        (should (equal julia-workbench--repl-last-result "LiveFigure()")))
+      (workbench-repl-live-eval buffer "LiveFigure();")
+      (with-current-buffer buffer (should (= (length julia-workbench--plot-history) 1)))
+      (workbench-repl-live-eval buffer "display(LiveFigure()); display(LiveFigure());")
+      (with-current-buffer buffer (should (= (length julia-workbench--plot-history) 3)))
+      (workbench-repl-live-eval buffer "@async begin sleep(0.2); display(LiveFigure()); end; nothing")
+      (workbench-repl-live-wait buffer (lambda () (= (length julia-workbench--plot-history) 4)))
+      (workbench-repl-live-eval
+       buffer "display(\"image/svg+xml\", \"<svg xmlns=\\\"http://www.w3.org/2000/svg\\\">\" * \" \"^70000 * \"</svg>\");")
+      (with-current-buffer buffer
+        (should (= (length julia-workbench--plot-history) 4))
+        (should (> (file-attribute-size (file-attributes
+                                         (plist-get (car (last julia-workbench--plot-history)) :file))) 65536))
+        (should (eq julia-workbench--repl-state 'idle))
+        (should-not (string-match-p "\036\|\037\|<svg" (buffer-string))))
+      (let ((julia-workbench-plot-enabled nil))
+        (let ((other (julia-workbench--repl-buffer t)))
+          (workbench-repl-live-wait other)
+          (should-not (eq buffer other))
+          (with-current-buffer other (should-not julia-workbench--plot-directory))))
+      (let ((old-directory (with-current-buffer buffer julia-workbench--plot-directory)))
+        (with-current-buffer buffer (julia-workbench-repl-restart))
+        (workbench-repl-live-wait buffer)
+        (should-not (file-exists-p old-directory))
+        (with-current-buffer buffer
+          (should-not julia-workbench--plot-history)
+          (let ((new-directory julia-workbench--plot-directory))
+            (kill-buffer buffer)
+            (should-not (file-exists-p new-directory))))))))
+
 (provide 'repl-integration-tests)
 ;;; repl-integration-tests.el ends here

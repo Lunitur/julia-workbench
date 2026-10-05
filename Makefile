@@ -3,7 +3,7 @@ EMACS ?= emacs
 
 .PHONY: setup-server test test-editing test-completion test-corfu-ui test-doom-ui test-doom-corfu-ui preview-doom test-unicode test-eglot test-eglot-integration test-docs test-documentation test-documentation-integration test-repl test-repl-helper test-repl-integration test-server benchmark check check-editing check-completion check-documentation check-repl check-eglot byte-compile checkdoc
 
-ELISP = julia-workbench.el julia-workbench-completion.el julia-workbench-eglot.el julia-workbench-doc.el julia-workbench-repl.el test/editing-tests.el test/completion-tests.el test/eglot-tests.el test/eglot-integration-tests.el test/documentation-ui-tests.el test/documentation-integration-tests.el test/repl-tests.el test/repl-integration-tests.el test/server-tests.el
+ELISP = julia-workbench.el julia-workbench-completion.el julia-workbench-eglot.el julia-workbench-doc.el julia-workbench-plot.el julia-workbench-repl.el test/editing-tests.el test/completion-tests.el test/eglot-tests.el test/eglot-integration-tests.el test/documentation-ui-tests.el test/documentation-integration-tests.el test/repl-tests.el test/plot-tests.el test/repl-integration-tests.el test/plot-ui-tests.el test/server-tests.el
 
 setup-server:
 	$(JULIA) --startup-file=no julia/setup-server.jl
@@ -56,17 +56,28 @@ test-repl:
 test-repl-helper:
 	$(JULIA) --startup-file=no test/repl-tests.jl
 
+.PHONY: test-plots test-plot-helper test-plot-ui check-plots
+test-plots:
+	$(EMACS) -Q --batch -L . --eval '(setq load-prefer-newer t)' -l test/plot-tests.el -f ert-run-tests-batch-and-exit
+
+test-plot-helper:
+	$(JULIA) --startup-file=no test/plot-tests.jl
+
+# Optional: JULIA_WORKBENCH_PLOT_PROJECT points to an existing Plots.jl project.
+test-plot-ui:
+	JULIA="$(JULIA)" $(EMACS) -Q -L . -L test --eval '(setq load-prefer-newer t)' -l test/plot-ui-tests.el --eval '(run-at-time 1 nil (function workbench-plot-ui-run))'
+
 test-repl-integration:
 	JULIA="$(JULIA)" $(EMACS) -Q --batch -L . --eval '(setq load-prefer-newer t)' -l test/repl-integration-tests.el -f ert-run-tests-batch-and-exit
 
-test: test-editing test-completion test-unicode test-eglot test-docs test-documentation test-documentation-integration test-repl test-repl-helper test-repl-integration test-server test-eglot-integration
+test: test-editing test-completion test-unicode test-eglot test-docs test-documentation test-documentation-integration test-repl test-repl-helper test-plots test-plot-helper test-repl-integration test-server test-eglot-integration
 
 benchmark:
 	$(JULIA) --startup-file=no --project=test/fixtures/Example test/documentation-benchmark.jl
 	JULIA="$(JULIA)" EMACS="$(EMACS)" $(JULIA) --startup-file=no test/server-benchmark.jl
 
 byte-compile:
-	$(EMACS) -Q --batch -L . --eval '(setq load-prefer-newer t byte-compile-error-on-warn t)' -f batch-byte-compile $(ELISP)
+	$(EMACS) -Q --batch -L . -L test --eval '(setq load-prefer-newer t byte-compile-error-on-warn t)' -f batch-byte-compile $(ELISP)
 
 checkdoc:
 	$(EMACS) -Q --batch --eval '(progn (require (quote checkdoc)) (setq checkdoc-spellcheck-documentation-flag nil) (dolist (file (quote ($(foreach file,$(ELISP),"$(file)")))) (checkdoc-file file)))'
@@ -78,6 +89,8 @@ check-completion: test-completion test-unicode test-eglot-integration byte-compi
 check-documentation: test-documentation test-docs test-documentation-integration test-eglot-integration byte-compile checkdoc
 
 check-repl: test-repl test-repl-helper test-repl-integration byte-compile checkdoc
+
+check-plots: test-plots test-plot-helper test-repl-integration byte-compile checkdoc
 
 check-eglot: test-eglot test-eglot-integration byte-compile checkdoc
 
