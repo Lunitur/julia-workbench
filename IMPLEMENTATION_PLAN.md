@@ -1,19 +1,19 @@
 # Julia Workbench implementation plan
 
 Status: milestones 1 through 6 completed on 2026-10-01; milestone 7 completed
-on 2026-10-02. The isolated server
-launcher, documentation helper, real-server fixtures, editing major mode and
-project-aware Eglot integration, semantic/path completion and Unicode CAPF are
-implemented, together with asynchronous documentation lookup/search and caching
-and project-scoped comint REPL/evaluation.
-Completion popups have automated graphical checks in vanilla Emacs
-and the current Doom configuration. REPL lifecycle and evaluation have real Julia
-batch fixtures. Doom migration now has an exact scoped patch, an integration
-example and an isolated preview runner; all four migrated Doom integration
-fixtures pass using the installed package. The reviewed migration is applied
-and synced; all four Doom integration and three Corfu GUI fixtures also pass
-against the active configuration in fresh processes. The existing daemon still
-needs a restart; manual keyboard and minimum-version/release checks remain pending.
+on 2026-10-02; milestone 8 completed on 2026-10-06. The package includes editing,
+project-aware Eglot, semantic/path/Unicode completion, asynchronous documentation,
+project REPL/evaluation and native SVG/PNG plots. A reproducible package archive
+and isolated installation check now accompany the real-server and GUI fixtures.
+The release baseline is Emacs 31.1 / Julia 1.13.1 / LanguageServer 6.0.1.
+Emacs 30.1 failed structural tests; its compatibility work was explicitly excluded
+by the user. Julia 1.11.0 helper/REPL validation and the bundled server-manifest
+failure are recorded in [COMPATIBILITY.md](COMPATIBILITY.md). Manual keyboard
+checks and activation in an already-running Emacs remain separate from these
+automated release checks. Source is published at
+[Lunitur/julia-workbench](https://github.com/Lunitur/julia-workbench); no package
+registry upload is required. The README includes a pinned GitHub installation
+recipe for the shared Doom configuration.
 
 ## Progress
 
@@ -73,7 +73,11 @@ needs a restart; manual keyboard and minimum-version/release checks remain pendi
   completed. Four Doom integration fixtures and three Corfu GUI fixtures pass
   against the installed package in both the preview and active configuration.
   The existing daemon was preserved; restart it to load the migrated setup.
-- [ ] 8. Package and release validation.
+- [x] 8. Package and release validation: reproducible multi-file package archive,
+  clean package.el installation/autoload/asset check, plain Emacs example,
+  strict built-in lint and full real-runtime checks. Emacs 31.1 is the declared
+  minimum after the excluded Emacs 30.1 compatibility failures. See the release
+  validation record in [COMPATIBILITY.md](COMPATIBILITY.md).
 
 ## Goal and design
 
@@ -92,11 +96,11 @@ upstream Julia dependencies. Full structural editing requires the Julia
 tree-sitter grammar. Minimize dependencies by reusing these maintained
 components rather than implementing a language server or another Julia parser.
 
-Proposed baseline: Emacs 30.1+, Julia 1.11+, and LanguageServer.jl 6.0.1.
-The selected server requires Julia 1.11, raising the original Julia 1.10 proposal.
-Only Emacs 31.1 / Julia 1.13.1 has been exercised so far; test the minimum
-versions before publishing. The checked-in tooling manifest records the exact
-tested dependency graph.
+Release baseline: Emacs 31.1 and Julia 1.13.1 with LanguageServer.jl 6.0.1.
+The server's upstream Julia requirement is 1.11, but the checked-in tooling lock
+is for Julia 1.13.1. Julia 1.11.0 passes helper/REPL checks and fails bundled
+server setup. Emacs 30.1 fails three structural editing tests; the user excluded
+fixes for that version, so the package headers now require Emacs 31.1.
 
 ## Current workspace and configuration
 
@@ -487,6 +491,33 @@ configuration there. Manual keyboard checks and milestone 8 remain pending.
   Verify cancellation, stale results, timeouts and process cleanup.
 - Test the declared minimum Emacs version and the installed Emacs 31.1;
   document which Julia versions were actually exercised.
+
+Completed on 2026-10-06. `make package` creates the versioned package.el archive;
+`make test-package` installs and compiles it in a clean process, then tests a
+fresh session with no checkout on load-path. All helpers and tooling assets
+retain their installed paths. Package headers have lexical binding and a
+consistent Emacs 31.1 requirement; the existing GPL-3.0-or-later license covers
+the package's original implementation. Plain Emacs and Doom examples are
+included, with automatic compilation disabled for configuration examples.
+
+`make check-release` passes the full ERT/Julia suites, warnings-as-errors byte
+compilation, `check-parens`, `checkdoc` and diff checks. Checkdoc now exits with
+failure for documentation warnings. Validation found a REPL cleanup bug when
+exit status was inserted into a protected prompt; the original sentinel now
+temporarily permits that insertion, with a reproduced regression test. The
+Doom installation fixture also clears its disposable shebang buffer's modified
+flag to avoid a kill confirmation in newer configurations.
+
+Real-server fixtures cover the version-sensitive Eglot position/markup,
+completion and workspace-symbol adapters, Unicode edits, environment isolation,
+rename, formatting and crash/reconnect. Julia adapters remain isolated in the
+standard-library helper files. Fresh empty/reused symbol-cache measurements
+and fresh/cached documentation requests were repeated; timings, tested versions,
+GUI results and manual-validation boundaries are in
+[COMPATIBILITY.md](COMPATIBILITY.md). No Emacs 30.1 compatibility fixes or
+package registry upload are included in this milestone. The source repository
+was subsequently published to GitHub at the user's request, with a pinned
+installation recipe documented in README.md.
 
 Deliverables: installable package, reproducible checks, compatibility/feature
 table, vanilla Emacs and Doom examples, migration diff, and separate records of

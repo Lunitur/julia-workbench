@@ -7,8 +7,40 @@ A Doom integration example and scoped
 migration patch are available; migration status is tracked in
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
-The namespace is `julia-workbench`. The proposed Doom migration is separate
-from installing the independently usable package.
+The namespace is `julia-workbench`. The package requires Emacs 31.1. The fully
+validated server stack uses Julia 1.13.1 and LanguageServer 6.0.1; Julia 1.11.0
+also passes the standard-library helper and live REPL tests, but cannot install
+the bundled server manifest. See [COMPATIBILITY.md](COMPATIBILITY.md).
+
+## Installing a release archive
+
+For Doom hosts, install directly from the
+[GitHub repository](https://github.com/Lunitur/julia-workbench) using the pinned
+recipe in the Doom section below. No tar upload or package registry is required.
+
+From a checkout, run `make package` (or `emacs -Q --batch -l scripts/package.el`).
+This produces `dist/julia-workbench-0.1.0.tar`, including all six Emacs libraries,
+Julia helpers, the pinned tooling Project/Manifest, license and examples. It
+uses Emacs's built-in package facilities and GNU tar; no lint package is needed.
+Ordering, timestamps and ownership are normalized for reproducible archives.
+Set `RELEASE_DIRECTORY` to change the output directory.
+
+Install with `M-x package-install-file`, selecting that tar file. Package.el
+generates autoloads and compiles the libraries; `.jl` files and Julia shebangs
+then select the mode without an explicit `require`. Julia tooling setup remains
+an explicit command after installation. See [examples/vanilla.el](examples/vanilla.el)
+for plain Emacs and [examples/doom.el](examples/doom.el) for Doom configuration.
+Examples are excluded from automatic byte compilation because Doom macros
+require Doom's own initialization.
+
+`make test-package` builds the archive, installs it into a temporary package
+directory in a separate clean Emacs, and checks fresh-session autoloads, source
+selection, process-free editing, every runtime asset and a packaged Julia helper.
+`make check-release` runs the full suite, strict byte compilation, `check-parens`,
+failing `checkdoc`, archive installation and `git diff --check`. Development
+checks and the migration preview run from the checkout. The archive is a local
+release artifact. Source is published on GitHub; no package registry upload is
+required.
 
 ## Editing mode
 
@@ -247,17 +279,19 @@ match the server's actual requests; a nested `:julia` plist does not.
 
 ## Reproducible checks
 
-Requires Julia 1.11+ and Emacs 30.1+ with built-in JSON-RPC and ERT. GNU Make is
+Requires Emacs 31.1 with built-in JSON-RPC and ERT. The complete suite uses Julia
+1.13.1 with the bundled LanguageServer manifest. GNU Make is
 optional; its recipes are ordinary shell commands. The exercised versions and
 feature results are recorded in [COMPATIBILITY.md](COMPATIBILITY.md).
-The proposed minimum versions have not yet been tested; the current validated
-combination is Julia 1.13.1 with Emacs 31.1.
+Emacs 30.1 failed three structural editing tests and is outside the release
+baseline; no compatibility fixes were made. Julia 1.11.0 helper/REPL results
+and its server-manifest failure are recorded separately.
 
 Explicitly install the pinned server, then run the checks:
 
 ```sh
 make setup-server
-make check
+make check-release
 ```
 
 On NixOS without Make, use `nix shell nixpkgs#gnumake -c make setup-server`
@@ -292,7 +326,11 @@ user-writable directories outside the checkout and Nix store. Julia's normal
 depot is reused for downloaded packages and compilation; the global Julia
 **environment** is neither activated nor modified. Setup copies the checked-in
 Project/Manifest into the writable tooling directory and instantiates that lock.
-The recorded manifest is for Julia 1.13.1; other Julia minors still need testing.
+The recorded manifest is for Julia 1.13.1. Julia 1.11.0 cannot instantiate its
+stdlib graph (`Zstd_jll` has no source entry there). Use Julia 1.13.1 for the
+bundled setup workflow. A separately prepared LanguageServer 6.0.1 environment
+can be selected with `julia-workbench-server-project`; such server environments
+on older Julia versions are unvalidated.
 Setup refuses to overwrite an existing environment with a different project.
 
 The launcher keeps tooling dependencies separate from the analyzed project:
@@ -573,25 +611,31 @@ other plotting backends are not separately validated.
 The exact applied change to this user's Nix-managed Doom configuration is in
 [examples/doom-migration.patch](examples/doom-migration.patch). It disables
 `:lang julia`, replaces the Snail configuration with
-[examples/doom.el](examples/doom.el), and declares this checkout in `packages.el`:
+[examples/doom.el](examples/doom.el), and declares the GitHub package in `packages.el`:
+
+```elisp
+(package! julia-workbench
+  :recipe (:host github :repo "Lunitur/julia-workbench"
+           :files ("julia-workbench*.el" "julia"))
+  :pin "00bb9026f465efcabedeed38a83701dab539881c")
+```
+
+The `julia` directory includes all helpers and the tooling Project/Manifest.
+Caches, installed servers and history remain in writable user directories.
+The example pins the validated implementation commit. Distribute the same
+recipe and existing Doom integration through the shared configuration, run
+`doom sync` on each host, and restart Emacs. Use Emacs 31.1 and Julia 1.13.1;
+explicitly run `M-x julia-workbench-setup-server` and
+`M-x julia-workbench-setup-unicode` once on each host. Structural editing also
+needs a Julia tree-sitter grammar. To update hosts, push a tested commit, update
+`:pin` in the shared configuration, and run `doom sync` again.
+
+For local package development, replace the GitHub recipe with a checkout:
 
 ```elisp
 (package! julia-workbench
   :recipe (:type nil :local-repo "/home/carjin/projects/julia-mode"
            :files ("julia-workbench*.el" "julia")))
-```
-
-The `julia` directory includes all helpers and the tooling Project/Manifest.
-Caches, installed servers and history remain in writable user directories.
-After release, replace the local recipe with a Git recipe pinned to a full
-release commit. These placeholders must be filled with the published repository
-and revision; no release repository exists yet:
-
-```elisp
-(package! julia-workbench
-  :recipe (:type git :repo "https://github.com/OWNER/REPOSITORY.git"
-           :files ("julia-workbench*.el" "julia"))
-  :pin "FULL_RELEASE_COMMIT")
 ```
 
 The example preserves the existing localleader evaluation keys and registers
@@ -655,8 +699,9 @@ an explicit encoding to preserve raw bytes without opening a coding prompt.
 After explicit approval on 2026-10-02, the patch was applied to the active
 configuration and `doom sync -U` succeeded. Both suites passed again against
 the installed active package. The running daemon was preserved; restart Emacs
-to load the migrated configuration there. Manual keyboard validation and
-minimum-version checks remain separate.
+to load the migrated configuration there. Manual keyboard validation remains
+separate. The current release matrix and repeated installed Doom checks are
+recorded in [COMPATIBILITY.md](COMPATIBILITY.md).
 
 ## License
 

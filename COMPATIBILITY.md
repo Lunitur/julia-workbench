@@ -1,6 +1,12 @@
 # Feasibility baseline
 
-Recorded 2026-10-01, updated 2026-10-02 on Linux/NixOS. Milestones 1 through 6
+Recorded 2026-10-01, release validation updated 2026-10-06 on Linux/NixOS.
+Milestones 1 through 8 are complete. The release baseline is Emacs 31.1,
+Julia 1.13.1 and LanguageServer 6.0.1. The milestone records below retain
+their original measurement context; the release record is authoritative for
+current requirements and validation status.
+
+Milestones 1 through 6
 are complete; editing,
 project-aware Eglot, completion, documentation and REPL/evaluation can be loaded
 from this checkout. Automated
@@ -23,10 +29,127 @@ Restarting the existing daemon and manual keyboard validation remain pending.
 | Julia tree-sitter grammar | Nix `tree-sitter-julia-0.25.0`, existing system library |
 | Dependency graph | `julia/server-environment/Manifest.toml`, Julia manifest format 2.1 |
 
-Emacs 30.1 and Julia 1.11 are proposed minimums, **not tested combinations**.
+Emacs 31.1 is now the declared and tested minimum. Emacs 30.1 was exercised
+and failed three structural editing tests; compatibility fixes were excluded
+by the user. Julia 1.11.0 passes helper and live REPL tests, but fails setup
+with the bundled Julia 1.13.1 manifest. See the release record below.
 LanguageServer 6.0.1's Julia requirement is 1.11+, so the original proposed
-Julia 1.10 baseline is unavailable with this server release. Julia 1.11/1.12,
-their manifest handling and other operating systems remain to be exercised.
+Julia 1.10 baseline is unavailable with this server release. Julia 1.12,
+other independently resolved server environments and other operating systems
+remain unvalidated.
+
+## Package and release validation, 2026-10-06
+
+| Combination or check | Result |
+| --- | --- |
+| Emacs 31.1 / Julia 1.13.1 / LanguageServer 6.0.1 | Full `make check-release`: 95 ERT tests and 126 Julia assertions, no failures or skips with the explicit Julia grammar path |
+| Strict source checks | Byte compilation with warnings as errors; `check-parens`, failing `checkdoc` and `git diff --check` passed |
+| Archive installation | Package.el installs and compiles in a separate clean Emacs; a fresh session checks generated autoloads, extension/shebang selection, process-free editing, every helper/tooling asset and actual packaged documentation lookup |
+| Archive reproducibility | Consecutive builds from unchanged inputs produce identical SHA-256 digests; tar order, ownership and timestamps are normalized |
+| Vanilla GUI | Four Corfu fixtures and two plot fixtures passed, including actual Plots.jl 1.41.7 / GR SVG and PNG output from an existing isolated project |
+| Installed Doom GUI | Four integration fixtures passed using the rebuilt installed package: mode/assets, REPL/eval dispatch, Flycheck's Eglot bridge, lookup/search, formatting and Unicode semantic insertion |
+| Emacs 30.1 | 13/16 editing tests passed; three structural editing tests failed. The same failures occur in a source-only copy without Emacs 31.1 bytecode. No fixes were made; all package headers now require Emacs 31.1 |
+| Emacs 31.1 / Julia 1.11.0 | All 126 standard-library helper assertions and seven live REPL tests passed. Bundled server setup failed; the server/LSP combination is unvalidated |
+
+The archive is `dist/julia-workbench-0.1.0.tar`, built from package header
+metadata and including the six libraries, Julia helpers, tooling lock, license,
+documentation and plain Emacs/Doom examples. Package.el creates autoloads at
+installation; configuration examples and generated package metadata explicitly
+disable byte compilation. No UI or lint dependencies are introduced. Runtime
+dependencies keep their upstream licenses; package code is GPL-3.0-or-later.
+No registry upload or Git tag is part of this validation. Source is subsequently
+published at [Lunitur/julia-workbench](https://github.com/Lunitur/julia-workbench),
+with a pinned Doom recipe for deployment to other hosts.
+
+The complete source check includes 16 editing, 15 completion, 15 environment,
+15 documentation unit, three documentation integration, 14 REPL unit, six plot,
+seven REPL integration, two wire-protocol, one Eglot integration and one archive
+installation ERT test. Julia assertions cover nine Unicode, 57 documentation,
+29 REPL and 31 plot checks. Existing real-server tests exercise the private
+Eglot position/markup and workspace-symbol adapters, completion edit callbacks,
+project isolation, Unicode rename/formatting and crash/reconnect. Existing
+worker tests check cancellation, superseded results, timeouts and cleanup.
+
+One full run exposed an intermittent `Text is read-only` error while the
+default process sentinel inserted exit output at a protected comint prompt.
+A focused pipe-process test reproduced it; the adapter now temporarily permits
+only the original sentinel's insertion, preserving prompt protection afterward.
+The full suite passes with this regression check. The installed Doom fixture
+also clears the modified flag on its generated shebang buffer before disposal,
+avoiding Doom's temporary-buffer kill confirmation.
+
+The Emacs 30.1 failures are `workbench-editing-tree-custom-offset-and-unicode`,
+`workbench-editing-tree-imenu-and-navigation` and
+`workbench-editing-tree-typed-symbols`, with `wrong-type-argument integerp`
+for a marker in no buffer. That runtime came from Nixpkgs revision
+`11cb3517b3af6af300dd6c055aeda73c9bf52c48`, attribute `emacs30`.
+This is a failed compatibility probe, not a supported release combination.
+
+Julia 1.11.0's setup cannot locate `Zstd_jll` source in the shipped manifest,
+which was generated with Julia 1.13.1 and includes its stdlib dependency graph.
+No lockfile changes or older-runtime server compatibility fixes were made.
+Use Julia 1.13.1 for bundled setup; a separately prepared LanguageServer 6.0.1
+environment may be selected explicitly, but is not validated here. The 1.11.0
+probe used the official x86_64 Linux tarball adapted to NixOS's interpreter and
+library paths, with the old libopenlibm executable-stack flag cleared.
+
+Reproduce the supported release checks from the checkout:
+
+```sh
+JULIA_WORKBENCH_GRAMMAR_PATH="$HOME/.config/emacs/.local/etc/tree-sitter" \
+  make check-release
+make benchmark
+make test-corfu-ui CORFU_LOAD_PATH="/path/to/corfu /path/to/compat"
+JULIA_WORKBENCH_PLOT_PROJECT=/path/to/existing/Plots/project make test-plot-ui
+make test-doom-ui
+```
+
+Set `EMACS` and `JULIA` to select binaries. Use `nix shell nixpkgs#gnumake -c`
+before Make when it is not installed. Server tooling must already be installed
+explicitly; GUI checks require a display. Run the helper-only older Julia probe
+with `make JULIA=/path/to/julia-1.11.0 test-unicode test-docs test-repl-helper
+test-plot-helper test-repl-integration` and the same grammar environment.
+
+Fresh responsiveness measurements were repeated with existing Julia precompile
+caches. Empty/reused refers only to the server's symbol cache, not a fresh Julia
+depot or first-ever package compilation:
+
+| Server operation | Empty symbol cache | Reused symbol cache |
+| --- | ---: | ---: |
+| Startup to initialize | 5.462 s | 5.078 s |
+| Startup to first diagnostics | 12.409 s | 11.943 s |
+| First hover | 0.248 s | 0.247 s |
+| First completion after synchronized rename | 1.510 s | 1.554 s |
+| Repeated identical completion | 0.0033 s | 0.0034 s |
+
+| Documentation operation | Elapsed time |
+| --- | ---: |
+| Fresh helper selected-package lookup | 1.357 s |
+| Fresh helper selected-package text search | 2.484 s |
+| Warm lookup in an already loaded helper, mean of five | 0.0000595 s |
+| Warm text search in an already loaded helper, mean of five | 0.104 s |
+| Actual Emacs asynchronous Base lookup | 1.582 s |
+| Identical cached Emacs lookup, no helper | 0.0014 s |
+| Actual Emacs search, without/with explicitly selected packages | 2.536 / 3.019 s |
+
+Warm helper calls are direct Julia API measurements, not a persistent service.
+Only cached Emacs requests avoid spawning a fresh helper. These local fixture
+measurements are observations, not performance guarantees.
+
+Ignored evidence is retained in `test/results/release/31.1/{check,benchmark,
+corfu,plots,doom,doom-compile,lint-negative}.log`,
+`test/results/release/30.1/{check,editing-source}.log`, and
+`test/results/release/julia-1.11.0/{setup,helpers}.log`. Existing detailed server,
+UI and timing reports remain under `test/results/{eglot,corfu,plots,
+doom-migration,empty-symbol-cache,reused-symbol-cache}` and in
+`documentation-timings.toml` / `documentation-ui-timings.el`.
+The negative lint probe confirms that a documentation warning exits nonzero.
+
+Doom validation here means automated interaction in a fresh GUI using the
+installed package. Its compiled libraries were rebuilt for these checks.
+The user's existing daemon and REPL were not restarted or reloaded; manual
+keyboard validation and loading this change into that existing session remain
+separate. Tests preserve unrelated Doom/Nix configuration and package edits.
 
 ## Editing validation
 
