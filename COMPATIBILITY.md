@@ -411,7 +411,8 @@ The REPL uses a Julia BasicREPL over pipes with comint-owned history/input.
 Source evaluates in Main through include APIs; top-level selection needs the
 grammar. Runtime named docs and insertable completion query the existing process
 explicitly; method-only completion lists are not inserted. Plain-text renderings
-are bounded to 65,536 characters. Multimedia, debugger, automatic module context,
+are bounded to 65,536 characters. SVG/PNG multimedia is provided by the native
+plotting extension below. Debugger, automatic module context,
 terminal help/shell/Pkg modes and remote sessions are outside the initial scope.
 Source-settings changes choose a different session; manual runtime activation
 does not change Eglot/helper settings. No packages are installed by REPL startup
@@ -429,6 +430,40 @@ Startup plus first evaluation measured about one second with installed Julia
 precompile caches; simple repeated evaluations measured about 0.06–0.07 seconds
 including a 0.05-second fixture wait for the trailing prompt. These are batch
 measurements, not first-ever precompilation or manual UI timings.
+
+## Native plot validation
+
+The plot bridge uses Julia's standard `AbstractDisplay`, `showable` and MIME
+`show` APIs, with `invokelatest` for methods loaded during evaluation. SVG/PNG
+files travel through private session cache directories; independent bounded
+metadata notifications use the existing comint framing. No Jupyter or plotting
+package is required by Workbench itself.
+
+Six ERT unit fixtures cover arbitrary output chunk splits, evaluation-state
+preservation, invalid records, cache-file ownership, format/size validation,
+bounded disk history, navigation, original-byte export, pane recreation and
+session preference isolation and source access after a crash without startup.
+Thirty-one Julia assertions cover format
+selection, binary PNG transport, SVG larger than the text response bound,
+render/size failures with partial-file cleanup, returned values, semicolon
+suppression, explicit display, file evaluation and newly defined MIME methods.
+A sixth live comint fixture covers rich output, multiple and asynchronous
+displays, large SVG transport, disabled plotting and restart/buffer cleanup.
+
+The optional `test/plot-ui-tests.el` runs in a separate graphical Emacs, checking
+actual SVG rendering, a visible pane, preserved source focus, image zoom/fit and
+history. With `JULIA_WORKBENCH_PLOT_PROJECT`, it also checks actual Plots.jl/GR
+PNG/SVG generation, explicit MIME output and display after package loading. It
+uses an existing project and installs no dependencies. Logs are retained under
+`test/results/plots/`. CairoMakie, browser/WebGL interaction, manual keyboard
+use, Doom plot popups and minimum-version combinations remain unvalidated.
+
+On 2026-10-05 the runtime regression suites passed with the explicit Julia
+grammar, followed by strict byte compilation, checkdoc, check-parens and
+whitespace checks. Both optional GUI fixtures passed in Emacs 31.1 / Julia
+1.13.1, including Plots.jl 1.41.7 with GR from an isolated temporary project.
+The rendered frame was exported and visually inspected. The active Doom daemon
+was not reloaded; the Doom changes here are an integration example.
 
 ## Upstream API references
 

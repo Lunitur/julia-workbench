@@ -51,6 +51,8 @@
     :size 0.35 :select t :quit t :ttl nil)
   (set-popup-rule! "^\\*Julia REPL "
     :size 0.35 :select t :quit nil :ttl nil)
+  (set-popup-rule! "^\\*Julia Plots "
+    :side 'right :size 0.45 :select nil :quit t :ttl nil)
 
   (map! :localleader
         :map julia-workbench-mode-map
@@ -61,6 +63,7 @@
         :desc "Search documentation"       "s" #'julia-workbench-documentation-search
         :desc "Select documentation scope" "P" #'julia-workbench-documentation-select-packages
         :desc "Copy last eval result"      "y" #'julia-workbench-copy-last-eval-result
+        :desc "Show plot history"          "v" #'julia-workbench-show-plots
         :desc "Send line"                  "l" #'julia-workbench-send-line
         :desc "Send region"                "r" #'julia-workbench-send-region
         :desc "Send DWIM"                  "e" #'julia-workbench-send-dwim
@@ -81,6 +84,7 @@
         :desc "Restart"         "r" #'julia-workbench-repl-restart
         :desc "Activate project" "p" #'julia-workbench-repl-activate-project
         :desc "Documentation"   "d" #'julia-workbench-repl-documentation
+        :desc "Show plot history" "v" #'julia-workbench-show-plots
         :desc "Copy last result" "y" #'julia-workbench-copy-last-eval-result))
 
 ;;; doom.el ends here

@@ -2,7 +2,8 @@
 
 A Julia Emacs package under development. Editing, project-aware Eglot integration,
 semantic/path/Unicode completion, asynchronous documentation lookup/search and
-project REPL/evaluation are implemented. A Doom integration example and scoped
+project REPL/evaluation with native SVG/PNG plotting are implemented.
+A Doom integration example and scoped
 migration patch are available; migration status is tracked in
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
@@ -471,8 +472,9 @@ restart deliberately after changing runtime wrappers or project dependencies.
 Manual `Pkg.activate` affects the runtime alone; explicit activation restores
 the selected session environment and does not reconnect Eglot or install packages.
 
-This initial REPL provides plain text in `Main`, not Snail's multimedia display,
-debugger, automatic module-context tracking or terminal help/shell/Pkg modes.
+The REPL evaluates in `Main` and supports native SVG/PNG plots as described below.
+Debugger, automatic module-context tracking and terminal help/shell/Pkg modes
+are outside its scope.
 Use runtime lookup, ordinary Julia calls and `import Pkg; Pkg.add(...)` explicitly.
 Remote REPLs are not supported. The Doom migration preserves the core
 evaluation/activation/result-copy workflow using the new commands.
@@ -491,6 +493,69 @@ Logs and elapsed measurements are retained in `test/results/repl/`. These are
 automated batch interactions with real Julia processes. Doom REPL/evaluation
 dispatch also passes the graphical migration fixtures below; manual keyboard
 validation remains pending.
+
+## Native plot pane
+
+New REPL sessions capture SVG/PNG-capable Julia values in a dedicated Emacs pane.
+Plots use the same runtime and loaded packages as source/REPL evaluation, with no
+Jupyter dependency. Workbench installs no plotting libraries. For example, in a
+project where Plots.jl is already available:
+
+```julia
+using Plots
+p = plot(1:5, [1, 4, 2, 5, 3])  # Returning a plot displays it automatically.
+p;                             # A trailing semicolon suppresses automatic display.
+display(p)                     # Explicit display works, including inside loops.
+display("image/png", p)        # Request a particular supported format.
+```
+
+CairoMakie and other libraries implementing Julia's `image/svg+xml` or
+`image/png` MIME output can use the same display bridge. Browser widgets,
+interactive axes and 3D rotation are not provided by this static image pane.
+Image zoom changes magnification, not the plot's coordinate limits.
+
+The pane appears to the right without selecting it. `C-c C-p` in source or the
+REPL (`julia-workbench-show-plots`) selects the existing history without starting
+Julia. In the pane, use `n`/`p` for next/previous, `+`/`-` for image zoom, `f` to
+fit to the current window, `s` to save the original image bytes, and `q` to close
+the window. Saving preserves the original SVG/PNG format; it does not convert
+formats based on the destination's extension. Closing or killing the pane
+preserves history; use `C-c C-p` to reopen it.
+
+Configure these variables before starting a session:
+
+- `julia-workbench-plot-enabled` (default `t`): disable for text-only evaluation.
+- `julia-workbench-plot-formats` (default `(svg png)`): MIME preference, filtered
+  by this Emacs build's image support. Use `(png svg)` for raster-heavy figures.
+- `julia-workbench-plot-max-bytes` (default 16 MiB): largest accepted plot file.
+- `julia-workbench-plot-history-limit` (default 20): retained plots per session;
+  older files are deleted. At least one plot is retained.
+
+The enabled formats and byte limit form part of the REPL identity. Changed
+preferences select a different session; the history limit applies as new plots
+arrive. Images live in private session directories under the writable Workbench
+cache, separate from bounded text result records. Plot notifications do not
+finish an evaluation or replace the copyable plain-text result. Returned-value
+render failures print a diagnostic and fall back to text. Explicit `display`
+errors follow ordinary Julia evaluation error handling.
+
+A terminal Emacs client retains plot files when its build supports the formats;
+`C-c C-p` shows their paths and supports export. A graphical client is required
+for images. Restarting or killing a REPL removes its pane and cached figures.
+A stopped/crashed process retains its history until restart or buffer cleanup.
+Plots explicitly requesting an external GUI (`gui()` or `show=true`) still use
+that plotting library's GUI path.
+
+```sh
+make check-plots    # Protocol/history tests, Julia helper, live REPL and lint
+make test-plot-ui   # Separate graphical Emacs: actual SVG rendering and zoom
+# Optional real Plots.jl/GR validation, using an existing project:
+JULIA_WORKBENCH_PLOT_PROJECT=/path/to/project make test-plot-ui
+```
+
+The optional UI tests install nothing. Logs and an optional frame image are
+retained under `test/results/plots/`. Plots.jl/GR is exercised in that optional
+fixture; CairoMakie and other plotting backends are not separately validated.
 
 ## Doom migration
 

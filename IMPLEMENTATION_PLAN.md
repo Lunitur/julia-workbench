@@ -335,8 +335,9 @@ migrated active configuration.
 - Keep runtime evaluation separate from static LSP analysis. Documentation
   helper processes do not implicitly share user REPL state.
 - Include basic runtime documentation/completion where feasible using Julia
-  standard libraries. Snail's multimedia display and debugger integration are
-  outside this initial release; document those limits explicitly.
+  standard libraries. Native multimedia was initially deferred and is now
+  implemented in the plotting extension below; debugger integration remains
+  outside this release.
 
 Exit criterion: the user's existing core Snail keybindings have functioning
 replacements before Snail is removed from the configuration.
@@ -364,12 +365,31 @@ Runtime documentation uses the existing named-binding adapter against live Main;
 explicit runtime completion uses Julia's REPL APIs and translates byte ranges
 to character offsets. Neither starts a missing session or replaces Eglot CAPF.
 Queries preserve ans; stale source completions are rejected. No module-cache
-refresh is needed. Plain-text/Main-only evaluation excludes Snail multimedia,
-debugger and automatic module context. Terminal help/shell/Pkg modes and remote
+refresh is needed. Native SVG/PNG plotting is now a separate extension of this
+Main-only evaluation path. Debugger and automatic module context remain excluded.
+Terminal help/shell/Pkg modes and remote
 REPLs are outside this initial implementation. All automated checks use Emacs
 31.1 / Julia 1.13.1; manual keyboard and minimum-version checks remain pending.
 Milestone 7 below exercises Doom REPL/evaluation dispatch in the preview and
 migrated active configuration.
+
+### Native plotting extension
+
+Implemented on branch `feature/native-plot-pane`: the standard-library Julia
+display in `julia/plots.jl` renders SVG/PNG to private session cache files and
+emits independent metadata events. Evaluation automatically displays rich
+returned values except when semicolon-suppressed; explicit and asynchronous
+`display` calls share the same session. Text result copying remains independent.
+`julia-workbench-plot.el` provides a focus-preserving side pane, bounded history,
+image magnification, fit-to-window and original-byte export. Terminal clients can
+retain and save cached files. Restart/buffer cleanup removes session artifacts.
+No plotting dependencies are added to user projects or the tooling environment.
+
+`make check-plots` covers protocol fragmentation, file ownership and limits,
+history/export, rendering failures, runtime MIME methods and session lifecycle.
+`make test-plot-ui` separately checks graphical rendering, focus and zoom;
+`JULIA_WORKBENCH_PLOT_PROJECT` enables actual Plots.jl/GR SVG/PNG validation
+without installation. Browser-based interaction remains a future optional layer.
 
 ### 7. Migrate Doom after the replacement passes
 
