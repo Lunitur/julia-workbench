@@ -18,6 +18,40 @@
 (require 'seq)
 (require 'subr-x)
 
+(defun julia-workbench--workspace-symbol-xref (name kind uri range)
+  "Make an Xref for NAME of KIND at URI/RANGE with its declared signature."
+  (let* ((item (eglot--xref-make-match name uri range))
+         (buffer (or (find-buffer-visiting (eglot-uri-to-path uri))
+                     (gethash uri eglot--temp-location-buffers)))
+         (label
+          (if (not buffer) (concat name "  [" kind "]")
+            (with-current-buffer buffer
+              (save-excursion
+                (save-restriction
+                  (widen)
+                  (unless (cl-find 'julia (treesit-parser-list) :key #'treesit-parser-language)
+                    (when (and julia-workbench-use-tree-sitter (treesit-ready-p 'julia t))
+                      (treesit-parser-create 'julia)))
+                  (if (cl-find 'julia (treesit-parser-list) :key #'treesit-parser-language)
+                      (julia-workbench--symbol-label-at name (car (eglot-range-region range)) kind)
+                    (concat (string-trim (xref-item-summary item)) "  [" kind "]"))))))))
+    (setf (xref-item-summary item) label)
+    item))
+
+(cl-defmethod xref-backend-apropos :around ((_backend (eql eglot)) pattern)
+  "Show declared signatures for Julia workspace symbols matching PATTERN."
+  (if (not (derived-mode-p 'julia-workbench-mode)) (cl-call-next-method)
+    (when (eglot-server-capable :workspaceSymbolProvider)
+      (eglot--collecting-xrefs (collect)
+        (mapc
+         (lambda (symbol)
+           (let ((location (plist-get symbol :location)))
+             (collect (julia-workbench--workspace-symbol-xref
+                       (plist-get symbol :name)
+                       (alist-get (plist-get symbol :kind) eglot--symbol-kind-names "Symbol")
+                       (plist-get location :uri) (plist-get location :range)))))
+         (eglot--request (eglot-current-server) :workspace/symbol `(:query ,pattern)))))))
+
 (defcustom julia-workbench-environment nil
   "Analyzed environment directory or project file, overriding discovery.
 Relative paths are resolved from the ordinary project root.  With nil,

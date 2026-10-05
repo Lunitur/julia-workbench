@@ -10,6 +10,7 @@
 
 (require 'ert)
 (require 'julia-workbench-completion)
+(require 'eglot)
 
 (defconst workbench-completion-export
   "julia-workbench-unicode-v1\t1.13.1\n\\alpha\tα\n\\:smile:\t😄\n\\hat\t̂\n\\_2\t₂\n\\1/2\t½\n"
@@ -160,18 +161,59 @@
         (should-not (julia-workbench-path-completion-at-point))))))
 
 (ert-deftest workbench-completion-provider-order ()
-  "Reinstall local CAPFs before Eglot without wrapping or duplicating it."
+  "Keep provider ordering through management changes without duplicates."
   (let ((julia-workbench-use-tree-sitter nil))
     (with-temp-buffer
       (julia-workbench-mode)
+      (setq-local eglot--managed-mode t)
       (add-hook 'completion-at-point-functions 'eglot-completion-at-point nil t)
       (add-hook 'completion-at-point-functions 'ignore t t)
       (julia-workbench--setup-completion)
       (julia-workbench--setup-completion)
       (should (equal (seq-take completion-at-point-functions 3)
                      '(julia-workbench-unicode-completion-at-point
-                       julia-workbench-path-completion-at-point eglot-completion-at-point)))
-      (should (memq 'ignore completion-at-point-functions)))))
+                       julia-workbench-path-completion-at-point julia-workbench-semantic-completion-at-point)))
+      (should (memq 'ignore completion-at-point-functions))
+      (add-hook 'completion-at-point-functions 'eglot-completion-at-point nil t)
+      (julia-workbench--setup-completion)
+      (should (= 1 (cl-count #'julia-workbench-semantic-completion-at-point completion-at-point-functions)))
+      (setq-local eglot--managed-mode nil)
+      (julia-workbench--setup-completion)
+      (should-not (memq #'julia-workbench-semantic-completion-at-point completion-at-point-functions)))))
+
+(ert-deftest workbench-completion-semantic-signatures-and-edits ()
+  "Show types even without a docstring, retaining the server edit callback."
+  (let* ((edited nil)
+         (candidate (propertize "convert_value" 'eglot--lsp-item '(:kind 3)))
+         (table (list candidate))
+         (original (list 1 4 table :company-docsig (lambda (_) "convert_value(x::Int)::String")
+                         :company-doc-buffer (lambda (_) nil)
+                         :exit-function (lambda (_ status) (setq edited status) (insert "!")))))
+    (cl-letf (((symbol-function 'eglot-completion-at-point) (lambda () original)))
+      (with-temp-buffer
+        (insert "con")
+        (let* ((capf (julia-workbench-semantic-completion-at-point))
+               (properties (nthcdr 3 capf))
+               (buffer (funcall (plist-get properties :company-doc-buffer) candidate)))
+          (should (eq table (nth 2 capf)))
+          (should (equal (seq-take capf 2) '(1 4)))
+          (with-current-buffer buffer
+            (should (equal (buffer-string) "convert_value(x::Int)::String\n\n")))
+          (workbench-completion-accept capf "convert_value")
+          (should (eq edited 'finished))
+          (should (equal (buffer-string) "convert_value!")))))))
+
+(ert-deftest workbench-completion-semantic-doc-signature ()
+  "Use a typed doc signature when the server's detail is only a kind."
+  (let ((doc (generate-new-buffer " *test completion docs*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer doc (insert "    f(x::AbstractString)\n\nDocumentation."))
+          (should (equal (julia-workbench--completion-signature
+                          "f" (list :company-docsig (lambda (_) "Function")
+                                    :company-doc-buffer (lambda (_) doc)))
+                         "f(x::AbstractString)")))
+      (kill-buffer doc))))
 
 (defun workbench-completion-wait (process)
   "Wait at most ten seconds for export PROCESS and its sentinel."

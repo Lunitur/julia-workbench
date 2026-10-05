@@ -184,7 +184,8 @@
                           ("Macros" "reveal") ("Types" "Animal" "Byte" "Box")
                           ("Modules" "EditingFixture")))
         (dolist (name (cdr category))
-          (should (assoc name (cdr (assoc (car category) index)))))))
+          (should (cl-find-if (lambda (entry) (string-prefix-p name (car entry)))
+                              (cdr (assoc (car category) index)))))))
     (goto-char (point-min))
     (search-forward "return message")
     (treesit-beginning-of-defun)
@@ -241,7 +242,37 @@
       (indent-region (point-min) (point-max))
       (should (equal (buffer-string)
                      "function 🦦(α)\n  if α ≤ 2\n    α + 1\n  else\n    α\n  end\nend\n"))
-      (should (assoc "🦦" (cdr (assoc "Functions" (imenu--make-index-alist t))))))))
+      (should (assoc "🦦  [Functions]" (cdr (assoc "Functions" (imenu--make-index-alist t))))))))
+
+(ert-deftest workbench-editing-tree-typed-symbols ()
+  "Retain multiline declarations, overloads, return types and jump positions."
+  (workbench-editing-test-with-treesit
+      "function typed(\n x::Int,\n label::AbstractString\n)::String\n string(x, label)\nend\ntyped(x::T; flag=true)::T where {T<:Number} = x\n"
+    (let* ((index (imenu--make-index-alist t))
+           (function (assoc "typed( x::Int, label::AbstractString )::String  [Functions]"
+                            (cdr (assoc "Functions" index))))
+           (method (assoc "typed(x::T; flag=true)::T where {T<:Number}  [Methods]"
+                          (cdr (assoc "Methods" index)))))
+      (should function)
+      (should method)
+      (goto-char (cdr function))
+      (should (looking-at "function typed"))
+      (goto-char (cdr method))
+      (should (looking-at "typed(x::T"))
+      (should (string-match-p "label::AbstractString" (julia-workbench--local-signatures "typed")))
+      (should (string-match-p "where {T<:Number}" (julia-workbench--local-signatures "typed"))))))
+
+(ert-deftest workbench-editing-tree-hierarchical-symbols ()
+  "Show parent function types when Eglot groups parameters beneath it."
+  (workbench-editing-test-with-treesit "function typed(x::Int)::String\n string(x)\nend\n"
+    (let* ((parent (propertize "typed" 'imenu-region (cons 1 (point-max)) 'imenu-kind "Function"))
+           (argument (propertize "x" 'imenu-kind "Variable"))
+           (position (progn (goto-char 1) (search-forward "x::") (- (point) 3)))
+           (index (julia-workbench--annotate-imenu (list (cons parent (list (cons argument position)))))))
+      (should (equal (caar index) "typed(x::Int)::String  [Function]"))
+      (should (equal (caadar index) "x::Int  [Variable]"))
+      (should (= (cdadar index) position))
+      (should (equal (get-text-property 0 'imenu-region (caar index)) (cons 1 (point-max)))))))
 
 (ert-deftest workbench-editing-tree-operators ()
   (let ((treesit-font-lock-level 4))

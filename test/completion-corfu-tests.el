@@ -13,10 +13,32 @@
 (require 'eglot-integration-tests)
 (require 'corfu)
 (require 'corfu-popupinfo)
+(declare-function evil-insert-state "evil-states" (&optional arg))
+
+(when-let* ((path (getenv "JULIA_WORKBENCH_GRAMMAR_PATH")))
+  (add-to-list 'treesit-extra-load-path path))
 
 (defvar workbench-corfu-result-name
   (or (getenv "JULIA_WORKBENCH_CORFU_RESULTS") "corfu")
   "Result subdirectory for this optional GUI run.")
+
+(ert-deftest workbench-corfu-automatic-settings-local ()
+  "Enable automatic completion in Julia without changing other buffers."
+  (let ((automatic (default-value 'corfu-auto))
+        (popup (default-value 'corfu-popupinfo-mode))
+        (julia-workbench-use-tree-sitter nil))
+    (with-temp-buffer
+      (julia-workbench-mode)
+      (should corfu-mode)
+      (should corfu-auto)
+      (should corfu-popupinfo-mode)
+      (should (= corfu-auto-prefix 2)))
+    (should (eq automatic (default-value 'corfu-auto)))
+    (should (eq popup (default-value 'corfu-popupinfo-mode)))
+    (with-temp-buffer
+      (let ((julia-workbench-automatic-completion nil))
+        (julia-workbench-mode)
+        (should-not (local-variable-p 'corfu-auto))))))
 
 (defun workbench-corfu-select (name documentation)
   "Show actual completion and documentation popups, then accept NAME.
@@ -82,7 +104,7 @@ Check popup text for DOCUMENTATION before insertion."
          (eglot-autoreconnect nil)
          (shell-file-name (executable-find "sh"))
          (trusted-content (list (file-name-as-directory directory)))
-         (julia-workbench-use-tree-sitter nil)
+         (julia-workbench-use-tree-sitter t)
          (buffer nil) (server nil))
     (unwind-protect
         (progn
@@ -106,7 +128,29 @@ Check popup text for DOCUMENTATION before insertion."
             (should (eglot-signature-eldoc-function
                      (lambda (text &rest _) (setq signature text))))
             (workbench-eglot-integration-wait (lambda () signature))
-            (should (string-match-p "sinh" signature))))
+            (should (string-match-p "sinh" signature)))
+          ;; Type an actual character and wait for Corfu's automatic timer.
+          (goto-char (point-max))
+          (insert ")\nfunction typed_value(x::Int, label::AbstractString)::String\n string(x, label)\nend\ntyped_va")
+          (setq-local corfu-popupinfo-delay '(0.2 . 0.1))
+          (should corfu-auto)
+          (when (bound-and-true-p evil-local-mode) (evil-insert-state))
+          (execute-kbd-macro "l")
+          (should (string-suffix-p "typed_val" (buffer-string)))
+          (workbench-eglot-integration-wait (lambda () completion-in-region-mode) 15)
+          (corfu--update)
+          (should (member "typed_value" corfu--candidates))
+          (corfu--exhibit)
+          (should (frame-visible-p corfu--frame))
+          (workbench-corfu-select "typed_value" "x::Int, label::AbstractString.*::String")
+          (insert "(")
+          (eglot--signal-textDocument/didChange)
+          (let (signature)
+            (should (eglot-signature-eldoc-function
+                     (lambda (text &rest _) (setq signature text))))
+            (workbench-eglot-integration-wait (lambda () signature))
+            (should (string-match-p "x::Int" signature))
+            (should (string-match-p "label::AbstractString" signature))))
       (when server
         (workbench-eglot-integration-save-logs (list server) workbench-corfu-result-name)
         (when (jsonrpc-running-p server) (ignore-errors (eglot-shutdown server))))

@@ -17,6 +17,7 @@
 
 (require 'cl-lib)
 (require 'treesit)
+(require 'subr-x)
 
 (autoload 'julia-workbench-connect "julia-workbench-eglot" nil t)
 (autoload 'julia-workbench-reconnect "julia-workbench-eglot" nil t)
@@ -197,6 +198,81 @@ Include multiline strings intersecting the changed region."
       (setq head (treesit-node-child head 0 t)))
     (when head (treesit-node-text head t))))
 
+(defun julia-workbench--definition-label (node)
+  "Return definition NODE's signature or type header for symbol navigation."
+  (let ((head (pcase (treesit-node-type node)
+                ("module_definition" (treesit-node-child-by-field-name node "name"))
+                ("typed_expression" node)
+                (_ (treesit-node-child node 0 t)))))
+    (when head
+      (string-join (split-string (treesit-node-text head t) "[ \t\n\r]+" t) " "))))
+
+(defun julia-workbench--symbol-label-at (name position &optional kind)
+  "Enrich NAME at POSITION with its declared signature and optional KIND.
+Retain NAME's text properties, including Eglot's navigation metadata."
+  (let ((label
+         (when (and position (<= (point-min) position (point-max))
+                    (cl-find 'julia (treesit-parser-list) :key #'treesit-parser-language))
+           (let ((node (treesit-node-at position 'julia)) field definition)
+             (while (and node (not definition))
+               (let ((declared (julia-workbench--definition-name node)))
+                 (when (and declared (or (equal name declared)
+                                         (string-suffix-p (concat "." name) declared)))
+                   (cond
+                    ((or (julia-workbench--definition-p node)
+                         (equal (treesit-node-type node) "assignment"))
+                     (setq definition node))
+                    ((equal (treesit-node-type node) "typed_expression")
+                     (setq field node)))))
+               (setq node (treesit-node-parent node)))
+             (when-let* ((declaration (or definition field)))
+               (julia-workbench--definition-label declaration))))))
+    (let ((result (concat (or label name)
+                          (when kind (concat "  [" kind "]")))))
+      (when (> (length name) 0)
+        (add-text-properties 0 (length result) (text-properties-at 0 name) result))
+      result)))
+
+(defun julia-workbench--annotate-imenu (index &optional category)
+  "Add declared signatures and kinds to Imenu INDEX under CATEGORY."
+  (mapcar
+   (lambda (entry)
+     (if (and (consp entry) (stringp (car entry)))
+         (let* ((name (car entry)) (position (cdr entry))
+                (kind (or (get-text-property 0 'imenu-kind name) category)))
+           (cond
+            ((integer-or-marker-p position)
+             (cons (julia-workbench--symbol-label-at name position kind) position))
+            ((listp position)
+             (let ((region (get-text-property 0 'imenu-region name)))
+               (cons (if region
+                         (julia-workbench--symbol-label-at name (car region) kind)
+                       name)
+                     (julia-workbench--annotate-imenu position name))))
+            (t entry)))
+       entry))
+   index))
+
+(defun julia-workbench--setup-symbol-navigation ()
+  "Display signatures in local and Eglot Imenu while preserving jump targets."
+  (when (derived-mode-p 'julia-workbench-mode)
+    (remove-function (local 'imenu-create-index-function) #'julia-workbench--annotate-imenu)
+    (add-function :filter-return (local 'imenu-create-index-function)
+                  #'julia-workbench--annotate-imenu)))
+
+(defun julia-workbench--local-signatures (name)
+  "Return declared local function signatures matching completion NAME."
+  (when julia-workbench--tree-sitter-active
+    (let (signatures)
+      (dolist (capture (treesit-query-capture
+                        (treesit-buffer-root-node 'julia)
+                        '([(function_definition) (assignment)] @definition)))
+        (let ((node (cdr capture)))
+          (when (and (julia-workbench--definition-p node)
+                     (equal name (julia-workbench--definition-name node)))
+            (push (julia-workbench--definition-label node) signatures))))
+      (when signatures (string-join (delete-dups (nreverse signatures)) "\n")))))
+
 (defun julia-workbench--method-assignment-p (node)
   "Return non-nil if assignment NODE defines a short-form method."
   (let ((head (treesit-node-child node 0 t)))
@@ -326,7 +402,8 @@ The first child of a block is its body, so anchor at its enclosing form."
       nil julia-workbench--definition-name)
      ("Modules" "\\`module_definition\\'" nil julia-workbench--definition-name)))
   (treesit-major-mode-setup)
-  (setq-local julia-workbench--tree-sitter-active t))
+  (setq-local julia-workbench--tree-sitter-active t)
+  (julia-workbench--setup-symbol-navigation))
 
 (defun julia-workbench--require-parser ()
   "Signal a useful error unless structural editing is available."
@@ -411,6 +488,7 @@ executable or server is launched when entering this mode."
               syntax-propertize-function #'julia-workbench--syntax-propertize)
   (julia-workbench--setup-completion)
   (julia-workbench--setup-documentation)
+  (add-hook 'eglot-managed-mode-hook #'julia-workbench--setup-symbol-navigation nil t)
   (add-hook 'syntax-propertize-extend-region-functions
             #'syntax-propertize-multiline nil t)
   (add-hook 'syntax-propertize-extend-region-functions

@@ -12,6 +12,10 @@
 (require 'julia-workbench-eglot)
 (require 'flymake)
 (require 'xref)
+(require 'imenu)
+
+(when-let* ((path (getenv "JULIA_WORKBENCH_GRAMMAR_PATH")))
+  (add-to-list 'treesit-extra-load-path path))
 
 (defvar trusted-content)
 
@@ -82,7 +86,7 @@ The selection adapter uses the CAPF exactly as a completion UI does."
   "Exercise qualified, import and macro completions with real server edits."
   (should (equal (seq-take completion-at-point-functions 3)
                  '(julia-workbench-unicode-completion-at-point
-                   julia-workbench-path-completion-at-point eglot-completion-at-point)))
+                   julia-workbench-path-completion-at-point julia-workbench-semantic-completion-at-point)))
   (let ((original (buffer-string)))
     (unwind-protect
         (progn
@@ -100,6 +104,20 @@ The selection adapter uses the CAPF exactly as a completion UI does."
           (insert "\nBase.")
           (workbench-eglot-integration-complete "sinh" "hyperbolic")
           (should (string-suffix-p "Base.sinh" (buffer-string)))
+          (insert "\nfunction typed_value(\n value::Int,\n label::AbstractString\n)::String\n string(value, label)\nend\n")
+          (eglot--signal-textDocument/didChange)
+          (let* ((items (xref-backend-apropos 'eglot "typed_value"))
+                 (item (car items)))
+            (should item)
+            (should (string-match-p "\\[Function\\]" (xref-item-summary item)))
+            (should (equal (xref-file-location-file (xref-item-location item)) buffer-file-name))
+            (when (treesit-ready-p 'julia t)
+              (should (string-match-p "value::Int, label::AbstractString.*::String" (xref-item-summary item)))
+              (let ((index (imenu--make-index-alist t)))
+                (should (cl-some (lambda (name)
+                                   (and (stringp name)
+                                        (string-match-p "typed_value( value::Int, label::AbstractString )::String" name)))
+                                 (flatten-tree index))))))
           (let ((julia-workbench-cache-directory
                  (expand-file-name "unicode-cache" default-directory)))
             (let ((process (julia-workbench-setup-unicode)))
@@ -144,7 +162,7 @@ Use SUBDIRECTORY under results, default eglot."
          ;; Emacs 31 gates Flymake and local configuration on content trust.
          ;; Trust only this generated fixture for the duration of the test.
          (trusted-content (list (file-name-as-directory directory)))
-         (julia-workbench-use-tree-sitter nil)
+         (julia-workbench-use-tree-sitter t)
          (first-buffer nil) (second-buffer nil) (sibling nil)
          (first-server nil) (second-server nil))
     (unwind-protect
@@ -163,7 +181,7 @@ Use SUBDIRECTORY under results, default eglot."
             (setq first-server (eglot-current-server))
             (push first-server servers)
             (should (eglot-managed-p))
-            (should (memq #'eglot-completion-at-point completion-at-point-functions))
+            (should (memq #'julia-workbench-semantic-completion-at-point completion-at-point-functions))
             (flymake-start nil t)
             (workbench-eglot-integration-wait (lambda () (flymake-diagnostics)))
             (should (cl-some (lambda (diagnostic)

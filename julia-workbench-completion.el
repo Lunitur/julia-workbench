@@ -6,14 +6,29 @@
 
 ;;; Commentary:
 ;; Unicode data is exported by an explicit asynchronous Julia job and cached
-;; outside the package.  CAPFs never launch Julia.  Eglot's semantic CAPF is
-;; left intact, including its ordering, documentation and edit callbacks.
+;; outside the package.  CAPFs never launch Julia.  The semantic adapter keeps
+;; Eglot's table, ordering and edits, and adds signature display to its docs.
 
 ;;; Code:
 
 (require 'julia-workbench)
 (require 'project)
+(require 'seq)
 (require 'subr-x)
+
+(declare-function eglot-completion-at-point "eglot")
+(declare-function corfu-mode "corfu" (&optional arg))
+(defvar corfu-auto)
+(defvar corfu-auto-prefix)
+(defvar corfu-auto-delay)
+(defvar corfu-popupinfo-mode)
+(defvar corfu-popupinfo-delay)
+
+(defcustom julia-workbench-automatic-completion t
+  "Enable automatic completion and candidate documentation with installed Corfu.
+Settings apply only to Julia Workbench buffers.  No UI package is installed.
+Set to nil before opening a buffer to keep your own completion UI settings."
+  :type 'boolean :group 'julia-workbench)
 
 (defcustom julia-workbench-unicode-setup-timeout 30
   "Seconds allowed for an explicit Unicode data export."
@@ -249,10 +264,86 @@ Use Emacs's file completion table, including directory continuation."
                      string predicate action))
                   :exclusive 'no)))))))
 
+(defun julia-workbench--completion-signature (candidate properties)
+  "Return the available signature for CANDIDATE from CAPF PROPERTIES."
+  (let* ((docsig (plist-get properties :company-docsig))
+         (signature (and docsig (funcall docsig candidate)))
+         (documentation (plist-get properties :company-doc-buffer)))
+    ;; Some servers use a bare kind as detail but put typed signatures in docs.
+    (or (julia-workbench--local-signatures (substring-no-properties candidate))
+        (and signature (string-match-p "[(:]" signature) signature)
+        (when documentation
+          (when-let* ((buffer (funcall documentation candidate)))
+            (with-current-buffer buffer
+              (save-excursion
+                (goto-char (point-min))
+                (when (re-search-forward
+                       (concat "^[ \t]*" (regexp-quote (substring-no-properties candidate))
+                               "[ \t]*(.*") nil t)
+                  (string-trim (match-string-no-properties 0)))))))
+        signature)))
+
+(defun julia-workbench-semantic-completion-at-point ()
+  "Adapt Eglot completion to display signatures on selection and acceptance.
+Preserve the original completion table, bounds, metadata and edit callback."
+  (when-let* ((capf (eglot-completion-at-point)))
+    (let* ((properties (nthcdr 3 capf))
+           (documentation (plist-get properties :company-doc-buffer))
+           (exit (plist-get properties :exit-function))
+           (source (current-buffer)))
+      (append
+       (seq-take capf 3)
+       (list
+        :company-doc-buffer
+        (lambda (candidate)
+          (when (buffer-live-p source)
+            (with-current-buffer source
+              (let* ((signature (julia-workbench--completion-signature candidate properties))
+                     (original (and documentation (funcall documentation candidate)))
+                     (text (and original (with-current-buffer original (buffer-string)))))
+                (when (or signature text)
+                  (with-current-buffer (get-buffer-create " *Julia completion documentation*")
+                    (let ((inhibit-read-only t))
+                      (erase-buffer)
+                      (when (and signature (not (and text (string-match-p (regexp-quote signature) text))))
+                        (insert signature "\n\n"))
+                      (when text (insert text)))
+                    (current-buffer)))))))
+        :exit-function
+        (lambda (candidate status)
+          (when (buffer-live-p source)
+            (with-current-buffer source
+              (when exit (funcall exit candidate status))
+              (when (memq status '(finished exact))
+                (when-let* ((signature (julia-workbench--completion-signature candidate properties)))
+                  (message "%s" signature)))))))
+       properties))))
+
+(defun julia-workbench--setup-completion-ui ()
+  "Enable installed Corfu and automatic documentation locally when requested."
+  (when (and julia-workbench-automatic-completion (require 'corfu nil t))
+    (setq-local corfu-auto t corfu-auto-prefix 2 corfu-auto-delay 0.2)
+    ;; Re-enable to install Corfu's automatic completion hook if already active.
+    (corfu-mode -1)
+    (corfu-mode 1)
+    (when (require 'corfu-popupinfo nil t)
+      ;; Popupinfo is a global minor mode; a local binding scopes it to Julia.
+      (setq-local corfu-popupinfo-mode t corfu-popupinfo-delay '(0.2 . 0.1)))))
+
 (defun julia-workbench--setup-completion ()
   "Install local CAPFs before Eglot, preserving other completion providers.
 Run again when Eglot changes management state, since it prepends its CAPF."
   (when (derived-mode-p 'julia-workbench-mode)
+    (setq-local completion-at-point-functions
+                (delete-dups
+                 (mapcar (lambda (provider)
+                           (if (eq provider #'eglot-completion-at-point)
+                               #'julia-workbench-semantic-completion-at-point
+                             provider))
+                         completion-at-point-functions)))
+    (unless (bound-and-true-p eglot--managed-mode)
+      (remove-hook 'completion-at-point-functions
+                   #'julia-workbench-semantic-completion-at-point t))
     (remove-hook 'completion-at-point-functions
                  #'julia-workbench-unicode-completion-at-point t)
     (remove-hook 'completion-at-point-functions
@@ -261,7 +352,8 @@ Run again when Eglot changes management state, since it prepends its CAPF."
               #'julia-workbench-path-completion-at-point nil t)
     (add-hook 'completion-at-point-functions
               #'julia-workbench-unicode-completion-at-point nil t)
-    (add-hook 'eglot-managed-mode-hook #'julia-workbench--setup-completion nil t)))
+    (add-hook 'eglot-managed-mode-hook #'julia-workbench--setup-completion nil t)
+    (julia-workbench--setup-completion-ui)))
 
 (with-eval-after-load 'julia-workbench-eglot
   (add-hook 'julia-workbench-environment-change-hook
