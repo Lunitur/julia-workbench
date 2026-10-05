@@ -109,6 +109,10 @@ Only formats supported by this Emacs build are requested."
           (insert "Open a graphical Emacs client to view this plot.\n"
                   "Press s to save the original image.\n\n" (plist-get entry :file)))
         (goto-char (point-min))
+        (dolist (window (get-buffer-window-list pane nil t))
+          (with-selected-window window
+            (image-set-window-vscroll 0)
+            (image-set-window-hscroll 0)))
         (setq header-line-format
               (with-current-buffer session
                 (format " Plot %d/%d | %s | n/p  +/-  f:fit  s:save"
@@ -182,6 +186,16 @@ This runs in the REPL buffer and never completes an evaluation request."
   (interactive)
   (julia-workbench--plot-render (julia-workbench--plot-owner)))
 
+(defun julia-workbench-plot-scroll-down (&optional count)
+  "Scroll down COUNT half pages in the current plot image."
+  (interactive "p")
+  (image-next-line (* (or count 1) (max 1 (/ (window-body-height) 2)))))
+
+(defun julia-workbench-plot-scroll-up (&optional count)
+  "Scroll up COUNT half pages in the current plot image."
+  (interactive "p")
+  (julia-workbench-plot-scroll-down (- (or count 1))))
+
 (defun julia-workbench-plot-save (filename)
   "Save the selected plot's original image bytes to FILENAME.
 The output format stays SVG or PNG regardless of FILENAME's extension."
@@ -208,7 +222,8 @@ The output format stays SVG or PNG regardless of FILENAME's extension."
 
 (define-derived-mode julia-workbench-plot-mode special-mode "Julia Plots"
   "Native SVG/PNG plot history for one Julia REPL session."
-  (setq-local truncate-lines t))
+  (setq-local truncate-lines t)
+  (image-mode-setup-winprops))
 
 (provide 'julia-workbench-plot)
 ;;; julia-workbench-plot.el ends here

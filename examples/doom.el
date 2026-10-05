@@ -19,8 +19,27 @@
   :config
   (require 'julia-workbench-repl)
   (when (modulep! :editor evil)
-    ;; The plot pane uses its own single-key commands, like an image viewer.
-    (evil-set-initial-state 'julia-workbench-plot-mode 'emacs))
+    (evil-set-initial-state 'julia-workbench-plot-mode 'normal)
+    ;; Images need viewport scrolling rather than buffer-line motions.
+    (evil-define-key 'normal julia-workbench-plot-mode-map
+      "h" #'image-backward-hscroll
+      "j" #'image-next-line
+      "k" #'image-previous-line
+      "l" #'image-forward-hscroll
+      (kbd "C-d") #'julia-workbench-plot-scroll-down
+      (kbd "C-u") #'julia-workbench-plot-scroll-up
+      (kbd "C-f") #'image-scroll-up
+      (kbd "C-b") #'image-scroll-down
+      "n" #'julia-workbench-plot-next
+      "p" #'julia-workbench-plot-previous
+      "+" #'image-increase-size
+      "=" #'image-increase-size
+      "-" #'image-decrease-size
+      "f" #'julia-workbench-plot-fit
+      "s" #'julia-workbench-plot-save
+      "q" #'quit-window)
+    ;; Keep pane controls ahead of extensions such as evil-snipe.
+    (evil-make-intercept-map julia-workbench-plot-mode-map 'normal t))
 
   (defun +julia-workbench-open-repl ()
     "Open the project REPL and return its buffer for Doom's eval commands."

@@ -10,8 +10,10 @@
 
 (require 'repl-integration-tests)
 
+(defvar evil-state)
+
 (ert-deftest workbench-plot-ui-native-history-zoom-and-focus ()
-  "Render a real SVG image, preserve source focus, magnify, fit and navigate."
+  "Render SVG, preserve focus, magnify, scroll, fit and navigate with Doom keys."
   (should (display-images-p))
   (workbench-repl-live-fixture
     (switch-to-buffer source)
@@ -38,13 +40,50 @@
             (accept-process-output nil 0.3)
             (should (> (car (image-size (get-text-property (point) 'display) t)) width))
             (call-interactively (key-binding (kbd "f")))
-            (should (= (car (image-size (get-text-property (point) 'display) t)) width))))
+            (should (= (car (image-size (get-text-property (point) 'display) t)) width)))
+          (when (bound-and-true-p evil-mode)
+            (should (eq evil-state 'normal))
+            ;; Use an oversized image to exercise both viewport axes.
+            (let* ((image (get-text-property (point-min) 'display))
+                   (inhibit-read-only t))
+              (put-text-property
+               (point-min) (point-max) 'display
+               (create-image (plist-get (cdr image) :file) 'svg nil
+                             :width (* 3 (window-body-width window t))
+                             :height (* 3 (window-body-height window t)))))
+            (redisplay t)
+            (dolist (key '("j" "C-d" "C-f"))
+              (let ((before (window-vscroll nil t)))
+                (call-interactively (key-binding (kbd key)))
+                (should (> (window-vscroll nil t) before))))
+            (dolist (key '("k" "C-u" "C-b"))
+              (let ((before (window-vscroll nil t)))
+                (call-interactively (key-binding (kbd key)))
+                (should (< (window-vscroll nil t) before))))
+            (call-interactively (key-binding (kbd "l")))
+            (should (> (window-hscroll) 0))
+            (call-interactively (key-binding (kbd "h")))
+            (should (= (window-hscroll) 0))
+            (call-interactively (key-binding (kbd "j")))
+            (call-interactively (key-binding (kbd "l")))
+            (call-interactively (key-binding (kbd "f")))
+            (should (= (window-vscroll nil t) 0))
+            (should (= (window-hscroll) 0))
+            (should (eq (key-binding (kbd "s")) #'julia-workbench-plot-save))
+            (should (commandp (key-binding (kbd "SPC w h")))))
+          ;; Exercise the active window command, including Doom's popup handling.
+          (when (bound-and-true-p evil-mode)
+            (call-interactively (key-binding (kbd "C-w h")))
+            (should (eq (selected-window) source-window))
+            (select-window window)))
         (workbench-repl-live-eval buffer "GUIFigure()")
         (with-selected-window window
           (call-interactively (key-binding (kbd "p")))
           (should (string-match-p "Plot 1/2" header-line-format))
           (call-interactively (key-binding (kbd "n")))
-          (should (string-match-p "Plot 2/2" header-line-format)))))))
+          (should (string-match-p "Plot 2/2" header-line-format))
+          (call-interactively (key-binding (kbd "q")))
+          (should-not (get-buffer-window pane)))))))
 
 (ert-deftest workbench-plot-ui-plots-jl-svg-and-png ()
   "Display GR-generated figures through returned values and explicit MIME display."

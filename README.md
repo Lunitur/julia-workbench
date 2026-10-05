@@ -518,8 +518,11 @@ The pane appears to the right without selecting it. `C-c C-p` in source or the
 REPL (`julia-workbench-show-plots`) selects the existing history without starting
 Julia. In the pane, use `n`/`p` for next/previous, `+`/`-` for image zoom, `f` to
 fit to the current window, `s` to save the original image bytes, and `q` to close
-the window. The Doom integration puts this viewer in Evil's Emacs state so its
-single-key commands take precedence over normal-state motion/search commands.
+the window. The Doom integration keeps Evil normal state active, with `h/j/k/l`
+scrolling the image viewport, `C-d`/`C-u` scrolling half pages and `C-f`/`C-b`
+scrolling full pages. Zoom in first if the fitted image fills the pane.
+Use the usual `C-w h/j/k/l` or Doom `SPC w` commands to switch windows.
+The viewer keys above have explicit normal-state bindings in this pane.
 Saving preserves the original SVG/PNG format; it does not convert
 formats based on the destination's extension. Closing or killing the pane
 preserves history; use `C-c C-p` to reopen it.

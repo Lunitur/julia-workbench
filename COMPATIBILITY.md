@@ -471,8 +471,9 @@ The rendered frame was exported and visually inspected. The active Doom daemon
 was not reloaded; the Doom changes here are an integration example.
 
 On 2026-10-06 both graphical fixtures also passed in the installed Doom
-configuration. Its plot pane uses Evil's Emacs state, preserving the viewer's
-keys. The same scoped configuration and runtime workaround were applied to the
+configuration. Its plot pane now uses Evil normal state, with explicit viewer
+keys and image viewport scrolling; window navigation remains available. The
+same scoped configuration and runtime workaround were applied to the
 running daemon and existing Julia REPL without a restart. GR's open workstation
 was closed before switching the existing session to the null workstation.
 
