@@ -34,16 +34,16 @@
                  (width (car (image-size image t))))
             (should (eq (car image) 'image))
             (should (<= width (window-body-width window t)))
-            (image-increase-size)
+            (call-interactively (key-binding (kbd "+")))
             (accept-process-output nil 0.3)
             (should (> (car (image-size (get-text-property (point) 'display) t)) width))
-            (julia-workbench-plot-fit)
+            (call-interactively (key-binding (kbd "f")))
             (should (= (car (image-size (get-text-property (point) 'display) t)) width))))
         (workbench-repl-live-eval buffer "GUIFigure()")
         (with-selected-window window
-          (julia-workbench-plot-previous)
+          (call-interactively (key-binding (kbd "p")))
           (should (string-match-p "Plot 1/2" header-line-format))
-          (julia-workbench-plot-next)
+          (call-interactively (key-binding (kbd "n")))
           (should (string-match-p "Plot 2/2" header-line-format)))))))
 
 (ert-deftest workbench-plot-ui-plots-jl-svg-and-png ()
@@ -54,8 +54,20 @@
     (switch-to-buffer source)
     (let* ((julia-workbench-environment (getenv "JULIA_WORKBENCH_PLOT_PROJECT"))
            (julia-workbench-plot-formats '(png svg))
-           (process-environment (cons "GKSwstype=100" process-environment))
-           (buffer (julia-workbench--repl-buffer t)))
+           (process-environment (copy-sequence process-environment))
+           (launcher (expand-file-name "gksqt-probe.sh" fixture))
+           (marker (expand-file-name "gksqt-attempted" fixture))
+           (buffer nil))
+      ;; Start with a desktop environment, without the old test-only workaround.
+      ;; A backend trying to spawn its Qt viewer creates an observable marker.
+      (setenv "GKSwstype" nil)
+      (setenv "GKS_WSTYPE" nil)
+      (with-temp-file launcher
+        (insert "#!/bin/sh\nprintf attempted > " (shell-quote-argument marker) "\nexit 1\n"))
+      (set-file-modes launcher #o700)
+      (setenv "GKS_QT" (shell-quote-argument launcher))
+      (setq buffer (julia-workbench--repl-buffer t))
+      (should (equal (workbench-repl-live-eval buffer "get(ENV, \"GKSwstype\", \"unset\")") "\"100\""))
       (workbench-repl-live-eval
        buffer "using Plots; gr(); p = plot(1:5, [1,4,2,5,3]; title=\"Workbench native plots\")")
       (with-current-buffer buffer
@@ -63,6 +75,7 @@
         (should (eq (plist-get (car julia-workbench--plot-history) :type) 'png))
         (should (string-match-p "Plot{Plots.GRBackend" julia-workbench--repl-last-result)))
       (workbench-repl-live-eval buffer "display(\"image/svg+xml\", p); display(p);")
+      (should-not (file-exists-p marker))
       (with-current-buffer buffer
         (should (equal (mapcar (lambda (entry) (plist-get entry :type)) julia-workbench--plot-history)
                        '(png svg png)))

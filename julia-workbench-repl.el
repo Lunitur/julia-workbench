@@ -277,6 +277,11 @@ Runtime lookup/completion query Main."
                  (process-environment (copy-sequence process-environment))
                  (_ (progn
                       (when (plist-get context :plot-formats)
+                        ;; GR can open gksqt while measuring/drawing MIME output.
+                        ;; Choose its null workstation before GR is loaded, while
+                        ;; respecting explicitly configured workstation settings.
+                        (unless (or (getenv "GKSwstype") (getenv "GKS_WSTYPE"))
+                          (setenv "GKSwstype" "100"))
                         (let ((root (expand-file-name "plots" (plist-get context :cache))))
                           (make-directory root t)
                           (setq julia-workbench--plot-directory

@@ -447,16 +447,21 @@ Thirty-one Julia assertions cover format
 selection, binary PNG transport, SVG larger than the text response bound,
 render/size failures with partial-file cleanup, returned values, semicolon
 suppression, explicit display, file evaluation and newly defined MIME methods.
-A sixth live comint fixture covers rich output, multiple and asynchronous
+A live comint fixture covers rich output, multiple and asynchronous
 displays, large SVG transport, disabled plotting and restart/buffer cleanup.
+Another verifies GR's null-workstation default, disabled plotting, preserved
+explicit workstation settings and isolation from Emacs's process environment.
 
 The optional `test/plot-ui-tests.el` runs in a separate graphical Emacs, checking
 actual SVG rendering, a visible pane, preserved source focus, image zoom/fit and
 history. With `JULIA_WORKBENCH_PLOT_PROJECT`, it also checks actual Plots.jl/GR
 PNG/SVG generation, explicit MIME output and display after package loading. It
-uses an existing project and installs no dependencies. Logs are retained under
+uses an existing project and installs no dependencies. A fake Qt launcher records
+attempts to open an external viewer; this runs without the original test-only
+`GKSwstype=100` override. Pane commands are dispatched through actual key lookup,
+including in `make test-doom-plot-ui`. Logs are retained under
 `test/results/plots/`. CairoMakie, browser/WebGL interaction, manual keyboard
-use, Doom plot popups and minimum-version combinations remain unvalidated.
+use and minimum-version combinations remain unvalidated.
 
 On 2026-10-05 the runtime regression suites passed with the explicit Julia
 grammar, followed by strict byte compilation, checkdoc, check-parens and
@@ -464,6 +469,12 @@ whitespace checks. Both optional GUI fixtures passed in Emacs 31.1 / Julia
 1.13.1, including Plots.jl 1.41.7 with GR from an isolated temporary project.
 The rendered frame was exported and visually inspected. The active Doom daemon
 was not reloaded; the Doom changes here are an integration example.
+
+On 2026-10-06 both graphical fixtures also passed in the installed Doom
+configuration. Its plot pane uses Evil's Emacs state, preserving the viewer's
+keys. The same scoped configuration and runtime workaround were applied to the
+running daemon and existing Julia REPL without a restart. GR's open workstation
+was closed before switching the existing session to the null workstation.
 
 ## Upstream API references
 

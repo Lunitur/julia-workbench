@@ -518,7 +518,9 @@ The pane appears to the right without selecting it. `C-c C-p` in source or the
 REPL (`julia-workbench-show-plots`) selects the existing history without starting
 Julia. In the pane, use `n`/`p` for next/previous, `+`/`-` for image zoom, `f` to
 fit to the current window, `s` to save the original image bytes, and `q` to close
-the window. Saving preserves the original SVG/PNG format; it does not convert
+the window. The Doom integration puts this viewer in Evil's Emacs state so its
+single-key commands take precedence over normal-state motion/search commands.
+Saving preserves the original SVG/PNG format; it does not convert
 formats based on the destination's extension. Closing or killing the pane
 preserves history; use `C-c C-p` to reopen it.
 
@@ -543,19 +545,25 @@ A terminal Emacs client retains plot files when its build supports the formats;
 `C-c C-p` shows their paths and supports export. A graphical client is required
 for images. Restarting or killing a REPL removes its pane and cached figures.
 A stopped/crashed process retains its history until restart or buffer cleanup.
-Plots explicitly requesting an external GUI (`gui()` or `show=true`) still use
-that plotting library's GUI path.
+Native plot sessions default GR to its null workstation (`GKSwstype=100`) before
+loading plotting packages. This prevents GR from launching its Qt viewer even
+while rendering SVG/PNG. Explicit `GKSwstype`/`GKS_WSTYPE` environment settings
+are respected. For GR's external GUI workflow, disable native plotting before
+starting a separate session, or explicitly configure its workstation.
 
 ```sh
 make check-plots    # Protocol/history tests, Julia helper, live REPL and lint
 make test-plot-ui   # Separate graphical Emacs: actual SVG rendering and zoom
 # Optional real Plots.jl/GR validation, using an existing project:
 JULIA_WORKBENCH_PLOT_PROJECT=/path/to/project make test-plot-ui
+# Check actual pane keys under the installed Doom configuration:
+JULIA_WORKBENCH_PLOT_PROJECT=/path/to/project make test-doom-plot-ui
 ```
 
 The optional UI tests install nothing. Logs and an optional frame image are
 retained under `test/results/plots/`. Plots.jl/GR is exercised in that optional
-fixture; CairoMakie and other plotting backends are not separately validated.
+fixture, including detection of attempted Qt viewer launches; CairoMakie and
+other plotting backends are not separately validated.
 
 ## Doom migration
 

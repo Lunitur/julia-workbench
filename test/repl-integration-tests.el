@@ -276,5 +276,24 @@
             (kill-buffer buffer)
             (should-not (file-exists-p new-directory))))))))
 
+(ert-deftest workbench-repl-live-gr-workstation-policy ()
+  "Use a null GR workstation for native plots and respect explicit user settings."
+  (skip-unless (image-type-available-p 'svg))
+  (workbench-repl-live-fixture
+    (let ((process-environment (copy-sequence process-environment)))
+      (setenv "GKSwstype" nil)
+      (setenv "GKS_WSTYPE" nil)
+      (let ((buffer (julia-workbench--repl-buffer t)))
+        (should (equal (workbench-repl-live-eval buffer "get(ENV, \"GKSwstype\", \"unset\")") "\"100\"")))
+      (should-not (getenv "GKSwstype"))
+      (let* ((julia-workbench-plot-enabled nil)
+             (buffer (julia-workbench--repl-buffer t)))
+        (should (equal (workbench-repl-live-eval buffer "get(ENV, \"GKSwstype\", \"unset\")") "\"unset\"")))
+      (setenv "GKS_WSTYPE" "svg")
+      (let* ((julia-workbench-repl-arguments '("--threads=1"))
+             (buffer (julia-workbench--repl-buffer t)))
+        (should (equal (workbench-repl-live-eval buffer "get(ENV, \"GKSwstype\", \"unset\")") "\"unset\""))
+        (should (equal (workbench-repl-live-eval buffer "ENV[\"GKS_WSTYPE\"]") "\"svg\""))))))
+
 (provide 'repl-integration-tests)
 ;;; repl-integration-tests.el ends here

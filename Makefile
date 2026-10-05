@@ -56,7 +56,7 @@ test-repl:
 test-repl-helper:
 	$(JULIA) --startup-file=no test/repl-tests.jl
 
-.PHONY: test-plots test-plot-helper test-plot-ui check-plots
+.PHONY: test-plots test-plot-helper test-plot-ui test-doom-plot-ui check-plots
 test-plots:
 	$(EMACS) -Q --batch -L . --eval '(setq load-prefer-newer t)' -l test/plot-tests.el -f ert-run-tests-batch-and-exit
 
@@ -66,6 +66,9 @@ test-plot-helper:
 # Optional: JULIA_WORKBENCH_PLOT_PROJECT points to an existing Plots.jl project.
 test-plot-ui:
 	JULIA="$(JULIA)" $(EMACS) -Q -L . -L test --eval '(setq load-prefer-newer t)' -l test/plot-ui-tests.el --eval '(run-at-time 1 nil (function workbench-plot-ui-run))'
+
+test-doom-plot-ui:
+	JULIA="$(JULIA)" $(EMACS) --init-directory "$(DOOM_EMACS_DIR)" -L test --eval '(setq load-prefer-newer t)' -l test/plot-ui-tests.el --eval '(run-at-time 2 nil (function workbench-plot-ui-run))'
 
 test-repl-integration:
 	JULIA="$(JULIA)" $(EMACS) -Q --batch -L . --eval '(setq load-prefer-newer t)' -l test/repl-integration-tests.el -f ert-run-tests-batch-and-exit

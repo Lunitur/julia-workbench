@@ -18,6 +18,9 @@
   :interpreter ("julia" . julia-workbench-mode)
   :config
   (require 'julia-workbench-repl)
+  (when (modulep! :editor evil)
+    ;; The plot pane uses its own single-key commands, like an image viewer.
+    (evil-set-initial-state 'julia-workbench-plot-mode 'emacs))
 
   (defun +julia-workbench-open-repl ()
     "Open the project REPL and return its buffer for Doom's eval commands."
