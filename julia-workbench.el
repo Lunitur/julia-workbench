@@ -3,8 +3,9 @@
 ;; Copyright (C) 2026 Julia Workbench contributors
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "30.1"))
+;; Package-Requires: ((emacs "31.1"))
 ;; Keywords: languages
+;; URL: https://github.com/Lunitur/julia-workbench
 
 ;;; Commentary:
 

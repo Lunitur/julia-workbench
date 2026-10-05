@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2026 Julia Workbench contributors
 ;; SPDX-License-Identifier: GPL-3.0-or-later
-;; Package-Requires: ((emacs "30.1"))
+;; Package-Requires: ((emacs "31.1"))
 
 ;;; Commentary:
 ;; Optional Eglot integration.  Loading this file registers the mode, but never

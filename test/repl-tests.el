@@ -19,6 +19,25 @@
   (format "\036test-token\t%s\t%s\t%s\t%s\037"
           id kind status (julia-workbench--repl-encode text)))
 
+(ert-deftest workbench-repl-exit-with-read-only-prompt ()
+  "Retain exit status output when the process mark touches a protected prompt."
+  (with-temp-buffer
+    (julia-workbench-repl-mode)
+    (insert (propertize "julia> " 'read-only t 'front-sticky '(read-only)))
+    (let ((process (make-pipe-process :name "workbench-exit-test" :buffer (current-buffer)
+                                      :noquery t :sentinel #'ignore)))
+      (unwind-protect
+          (progn
+            (set-marker (process-mark process) (point-max))
+            (delete-process process)
+            (process-put process 'julia-workbench-original-sentinel
+                         #'internal-default-process-sentinel)
+            (julia-workbench--repl-sentinel process "finished\n")
+            (should (eq julia-workbench--repl-state 'stopped))
+            (should (string-match-p "finished" (buffer-string)))
+            (should (get-text-property (point-min) 'read-only)))
+        (when (process-live-p process) (delete-process process))))))
+
 (ert-deftest workbench-repl-opening-does-not-launch ()
   "Opening source and loading the adapter must not start a process."
   (cl-letf (((symbol-function 'make-process) (lambda (&rest _) (ert-fail "Unexpected process"))))

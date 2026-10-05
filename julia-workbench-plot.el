@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2026 Julia Workbench contributors
 ;; SPDX-License-Identifier: GPL-3.0-or-later
-;; Package-Requires: ((emacs "30.1"))
+;; Package-Requires: ((emacs "31.1"))
 
 ;;; Commentary:
 ;; SVG/PNG files belong to one local REPL session.  A dedicated pane keeps a

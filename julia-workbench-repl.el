@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2026 Julia Workbench contributors
 ;; SPDX-License-Identifier: GPL-3.0-or-later
-;; Package-Requires: ((emacs "30.1"))
+;; Package-Requires: ((emacs "31.1"))
 
 ;;; Commentary:
 ;; Explicit, project/environment-scoped comint sessions.  Source requests use
@@ -123,7 +123,10 @@ options to Workbench.  Changing this list selects a distinct session."
         (julia-workbench--repl-discard (string-trim event))
         (julia-workbench--repl-history))
       (when-let* ((sentinel (process-get process 'julia-workbench-original-sentinel)))
-        (funcall sentinel process event))
+        ;; The default sentinel inserts status at the process mark, which can
+        ;; touch comint's protected prompt when a session stops or is killed.
+        (let ((inhibit-read-only t))
+          (funcall sentinel process event)))
       (force-mode-line-update))))
 
 (defun julia-workbench--repl-deadline (buffer process)

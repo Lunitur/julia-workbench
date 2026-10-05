@@ -1,4 +1,4 @@
-;;; doom.el --- Julia Workbench Doom integration -*- lexical-binding: t; -*-
+;;; doom.el --- Julia Workbench Doom integration -*- lexical-binding: t; no-byte-compile: t; -*-
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 

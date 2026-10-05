@@ -113,7 +113,9 @@
       (setq buffer-file-name "script")
       (insert "#!/usr/bin/env julia\nα = 1\n")
       (set-auto-mode)
-      (should (eq major-mode 'julia-workbench-mode)))))
+      (should (eq major-mode 'julia-workbench-mode))
+      ;; Doom can confirm killing modified temporary buffers as well as files.
+      (set-buffer-modified-p nil))))
 
 (ert-deftest workbench-doom-10-repl-and-eval-dispatch ()
   "Use Doom's REPL/evaluation handlers and the preserved localleader keys."

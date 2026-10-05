@@ -3,7 +3,19 @@ EMACS ?= emacs
 
 .PHONY: setup-server test test-editing test-completion test-corfu-ui test-doom-ui test-doom-corfu-ui preview-doom test-unicode test-eglot test-eglot-integration test-docs test-documentation test-documentation-integration test-repl test-repl-helper test-repl-integration test-server benchmark check check-editing check-completion check-documentation check-repl check-eglot byte-compile checkdoc
 
-ELISP = julia-workbench.el julia-workbench-completion.el julia-workbench-eglot.el julia-workbench-doc.el julia-workbench-plot.el julia-workbench-repl.el test/editing-tests.el test/completion-tests.el test/eglot-tests.el test/eglot-integration-tests.el test/documentation-ui-tests.el test/documentation-integration-tests.el test/repl-tests.el test/plot-tests.el test/repl-integration-tests.el test/plot-ui-tests.el test/server-tests.el
+ELISP = julia-workbench.el julia-workbench-completion.el julia-workbench-eglot.el julia-workbench-doc.el julia-workbench-plot.el julia-workbench-repl.el test/editing-tests.el test/completion-tests.el test/eglot-tests.el test/eglot-integration-tests.el test/documentation-ui-tests.el test/documentation-integration-tests.el test/repl-tests.el test/plot-tests.el test/repl-integration-tests.el test/plot-ui-tests.el test/server-tests.el test/package-tests.el test/lint.el scripts/package.el
+CHECKDOC_ELISP = $(ELISP) test/doom-integration-tests.el test/completion-corfu-tests.el examples/doom.el examples/vanilla.el
+
+.PHONY: package test-package check-release
+package:
+	$(EMACS) -Q --batch -l scripts/package.el
+
+# No checkout load-path: exercise package.el's real installed archive/autoloads.
+test-package: package
+	JULIA="$(JULIA)" $(EMACS) -Q --batch -l test/package-tests.el -f ert-run-tests-batch-and-exit
+
+check-release: check test-package
+	git diff --check
 
 setup-server:
 	$(JULIA) --startup-file=no julia/setup-server.jl
@@ -83,7 +95,7 @@ byte-compile:
 	$(EMACS) -Q --batch -L . -L test --eval '(setq load-prefer-newer t byte-compile-error-on-warn t)' -f batch-byte-compile $(ELISP)
 
 checkdoc:
-	$(EMACS) -Q --batch --eval '(progn (require (quote checkdoc)) (setq checkdoc-spellcheck-documentation-flag nil) (dolist (file (quote ($(foreach file,$(ELISP),"$(file)")))) (checkdoc-file file)))'
+	$(EMACS) -Q --batch -l test/lint.el $(CHECKDOC_ELISP)
 
 check-editing: test-editing byte-compile checkdoc
 
