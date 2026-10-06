@@ -215,6 +215,110 @@
                          "f(x::AbstractString)")))
       (kill-buffer doc))))
 
+(ert-deftest workbench-completion-overloaded-methods-and-cache ()
+  "Merge overloads from all sources without changing candidates or edits."
+  (let* ((resolved 0) (edited nil)
+         (candidate (propertize "f" 'eglot--lsp-item
+                                '(:kind 3 :detail "Function"
+                                  :documentation (:kind "markdown" :value "    f(x::Int)\n    f(x::String)"))))
+         (table (list candidate))
+         (doc (generate-new-buffer " *overloaded docs*")))
+    (unwind-protect
+        (progn
+          (with-current-buffer doc (insert "f(x::Float64)\n\nFunction documentation."))
+          (cl-letf (((symbol-function 'julia-workbench--local-signatures)
+                     (lambda (_) "f( x::Int )\nf(x::Bool)"))
+                    ((symbol-function 'eglot-completion-at-point)
+                     (lambda () (list 1 2 table
+                                      :annotation-function (lambda (_) " Function")
+                                      :company-docsig (lambda (_) "f(x::String)")
+                                      :company-doc-buffer (lambda (_) (cl-incf resolved) doc)
+                                      :exit-function (lambda (_ status) (setq edited status) (insert "!"))))))
+            (with-temp-buffer
+              (insert "f")
+              (let* ((capf (julia-workbench-semantic-completion-at-point))
+                     (properties (nthcdr 3 capf))
+                     (annotation (plist-get properties :annotation-function))
+                     (documentation (plist-get properties :company-doc-buffer)))
+                (should (eq table (nth 2 capf)))
+                (should (equal (funcall annotation candidate) " Function [3 methods]"))
+                (should (zerop resolved))
+                (let ((buffer (funcall documentation candidate)))
+                  (with-current-buffer buffer
+                    (should (string-prefix-p "4 available methods" (buffer-string)))
+                    (dolist (type '("Int" "Bool" "String" "Float64"))
+                      (should (string-match-p type (buffer-string))))))
+                (funcall documentation candidate)
+                (should (= resolved 1))
+                (should (equal (funcall annotation candidate) " Function [4 methods]"))
+                (insert " ")
+                (funcall documentation candidate)
+                (should (= resolved 2))
+                (workbench-completion-accept capf "f")
+                (should (eq edited 'finished))
+                (should (equal (buffer-string) "f! "))))))
+      (kill-buffer doc))))
+
+(ert-deftest workbench-completion-signature-parsing ()
+  "Keep multiline signatures, defaults and constraints without call bodies."
+  (should (equal (julia-workbench--signatures-in-text
+                  "f" "Prose mentioning f(x::Wrong).\n    f(\n x::Int,\n label::String = \"a\"\n)::String where {T<:Number}\n1. `M.f(x::Float64)` in `M` at file.jl\nf(x::Bool) = true\nf(x::Broken\n")
+                 '("f( x::Int, label::String = \"a\" )::String where {T<:Number}"
+                   "M.f(x::Float64)" "f(x::Bool)")))
+  (should (equal (julia-workbench--signatures-in-text "+" "    +(x::Int, y::Int)")
+                 '("+(x::Int, y::Int)")))
+  (should (equal (julia-workbench--signatures-in-text "f" "f(x = \"a  b\")")
+                 '("f(x = \"a  b\")")))
+  (should (equal (julia-workbench--unique-signatures
+                  '("f(x::Int)::String where {T<:Number}" "f(x::Int)::Function where {T<:Number}"
+                    "f(x::Int) where {T<:Number}" "f(x::String)"))
+                 '("f(x::Int)::String where {T<:Number}" "f(x::String)")))
+  (should (= 2 (length (julia-workbench--unique-signatures
+                       '("f(x = \"a b\")" "f(x = \"ab\")"))))))
+
+(ert-deftest workbench-completion-signature-browser-and-stale-replies ()
+  "Browse all structured signatures and discard replies after source changes."
+  (let ((result '(:signatures [(:label "f(x::Int)" :parameters [(:label "x::Int")])
+                               (:label "f(x::String)" :parameters [(:label "x::String")])]
+                 :activeSignature 1 :activeParameter 0))
+        (server 'test-server) callback)
+    (unwind-protect
+        (cl-letf (((symbol-function 'eglot-current-server) (lambda () server))
+                  ((symbol-function 'eglot-server-capable) (lambda (&rest _) t))
+                  ((symbol-function 'eglot--TextDocumentPositionParams) (lambda () nil))
+                  ((symbol-function 'eglot--async-request)
+                   (lambda (_server _method _params &rest args)
+                     (setq callback (plist-get args :success-fn)))))
+          (with-temp-buffer
+            (insert "f(")
+            (julia-workbench-signature-help)
+            (funcall callback result)
+            (with-current-buffer "*Julia Methods*"
+              (should buffer-read-only)
+              (should (= (length julia-workbench--signature-positions) 2))
+              (should (looking-at "→ 2\\. f(x::String)"))
+              (search-forward "x::String")
+              (should (get-text-property (1- (point)) 'face))
+              (goto-char (nth 1 julia-workbench--signature-positions))
+              (julia-workbench-signature-next)
+              (should (looking-at "  1\\. f(x::Int)"))
+              (julia-workbench-signature-previous)
+              (should (looking-at "→ 2\\. f(x::String)")))
+            (kill-buffer "*Julia Methods*")
+            (julia-workbench-signature-help)
+            (backward-char)
+            (funcall callback result)
+            (should-not (get-buffer "*Julia Methods*"))
+            (forward-char)
+            (insert "x")
+            (funcall callback result)
+            (should-not (get-buffer "*Julia Methods*"))
+            (julia-workbench-signature-help)
+            (setq server 'replacement-server)
+            (funcall callback result)
+            (should-not (get-buffer "*Julia Methods*"))))
+      (when (get-buffer "*Julia Methods*") (kill-buffer "*Julia Methods*")))))
+
 (defun workbench-completion-wait (process)
   "Wait at most ten seconds for export PROCESS and its sentinel."
   (let ((deadline (+ (float-time) 10)))

@@ -42,7 +42,7 @@
 
 (defun workbench-corfu-select (name documentation)
   "Show actual completion and documentation popups, then accept NAME.
-Check popup text for DOCUMENTATION before insertion."
+Check popup text for DOCUMENTATION, a regexp or list of regexps, before insertion."
   (should (display-graphic-p))
   (setq-local corfu-on-exact-match 'show
               corfu-preview-current nil
@@ -50,6 +50,9 @@ Check popup text for DOCUMENTATION before insertion."
   (corfu-mode 1)
   (corfu-popupinfo-mode 1)
   (redisplay t)
+  ;; Startup/focus events in this isolated test frame would cancel Eglot's
+  ;; synchronous completion request before the server has answered.
+  (discard-input)
   (should (completion-at-point))
   (should completion-in-region-mode)
   (corfu--update)
@@ -59,14 +62,17 @@ Check popup text for DOCUMENTATION before insertion."
   (should (frame-live-p corfu--frame))
   (should (frame-visible-p corfu--frame))
   (when documentation
-    (let ((candidate (nth corfu--index corfu--candidates)))
-      (should (string-match-p documentation (corfu-popupinfo--get-documentation candidate)))
+    (let ((candidate (nth corfu--index corfu--candidates))
+          (patterns (if (listp documentation) documentation (list documentation))))
+      (dolist (pattern patterns)
+        (should (string-match-p pattern (corfu-popupinfo--get-documentation candidate))))
       (setq corfu-popupinfo--function #'corfu-popupinfo--get-documentation)
       (corfu-popupinfo--show candidate)
       (should (frame-live-p corfu-popupinfo--frame))
       (should (frame-visible-p corfu-popupinfo--frame))
       (with-current-buffer corfu-popupinfo--buffer
-        (should (string-match-p documentation (buffer-string))))))
+        (dolist (pattern patterns)
+          (should (string-match-p pattern (buffer-string)))))))
   (corfu-insert)
   (should-not completion-in-region-mode))
 
@@ -131,7 +137,7 @@ Check popup text for DOCUMENTATION before insertion."
             (should (string-match-p "sinh" signature)))
           ;; Type an actual character and wait for Corfu's automatic timer.
           (goto-char (point-max))
-          (insert ")\nfunction typed_value(x::Int, label::AbstractString)::String\n string(x, label)\nend\ntyped_va")
+          (insert ")\nfunction typed_value(x::Int, label::AbstractString)::String\n string(x, label)\nend\ntyped_value(x::AbstractString, label::AbstractString)::String = x * label\ntyped_va")
           (setq-local corfu-popupinfo-delay '(0.2 . 0.1))
           (should corfu-auto)
           (when (bound-and-true-p evil-local-mode) (evil-insert-state))
@@ -142,7 +148,9 @@ Check popup text for DOCUMENTATION before insertion."
           (should (member "typed_value" corfu--candidates))
           (corfu--exhibit)
           (should (frame-visible-p corfu--frame))
-          (workbench-corfu-select "typed_value" "x::Int, label::AbstractString.*::String")
+          (workbench-corfu-select "typed_value" '("2 available methods"
+                                                 "x::Int, label::AbstractString.*::String"
+                                                 "x::AbstractString, label::AbstractString"))
           (insert "(")
           (eglot--signal-textDocument/didChange)
           (let (signature)

@@ -118,6 +118,35 @@ The selection adapter uses the CAPF exactly as a completion UI does."
                                    (and (stringp name)
                                         (string-match-p "typed_value( value::Int, label::AbstractString )::String" name)))
                                  (flatten-tree index))))))
+          ;; Both methods must appear from server metadata alone, without
+          ;; relying on current-buffer tree-sitter declarations.
+          (insert "\noverloaded_value(x::Int) = string(x)\noverloaded_value(x::AbstractString) = x\noverloaded_v")
+          (eglot--signal-textDocument/didChange)
+          (let ((julia-workbench--tree-sitter-active nil))
+            (let* ((capf (julia-workbench-semantic-completion-at-point))
+                   (candidates (all-completions "overloaded_v" (nth 2 capf)))
+                   (candidate (car (member "overloaded_value" candidates)))
+                   (properties (nthcdr 3 capf)))
+              (should (= 1 (cl-count "overloaded_value" candidates :test #'equal)))
+              (should (string-match-p "2 methods"
+                                      (funcall (plist-get properties :annotation-function) candidate)))
+              (let ((doc (funcall (plist-get properties :company-doc-buffer) candidate)))
+                (with-current-buffer doc
+                  (should (string-match-p "2 available methods" (buffer-string)))
+                  (should (string-match-p "x::Int" (buffer-string)))
+                  (should (string-match-p "x::AbstractString" (buffer-string)))))
+              (workbench-eglot-integration-complete "overloaded_value" "2 available methods")))
+          (insert "(")
+          (eglot--signal-textDocument/didChange)
+          (when (get-buffer "*Julia Methods*") (kill-buffer "*Julia Methods*"))
+          (julia-workbench-signature-help)
+          (workbench-eglot-integration-wait (lambda () (get-buffer "*Julia Methods*")))
+          (with-current-buffer "*Julia Methods*"
+            (should (= 2 (length julia-workbench--signature-positions)))
+            (should (string-match-p "x::Int" (buffer-string)))
+            (should (string-match-p "x::AbstractString" (buffer-string))))
+          (kill-buffer "*Julia Methods*")
+          (insert "1)\n")
           (let ((julia-workbench-cache-directory
                  (expand-file-name "unicode-cache" default-directory)))
             (let ((process (julia-workbench-setup-unicode)))

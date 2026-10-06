@@ -17,6 +17,11 @@
 (require 'subr-x)
 
 (declare-function eglot-completion-at-point "eglot")
+(declare-function eglot-current-server "eglot")
+(declare-function eglot-server-capable "eglot" (capability &rest more))
+(declare-function eglot--async-request "eglot" (server method params &rest args))
+(declare-function eglot--TextDocumentPositionParams "eglot" ())
+(declare-function eglot--sig-info "eglot" (sig &optional sig-active briefp))
 (declare-function corfu-mode "corfu" (&optional arg))
 (defvar corfu-auto)
 (defvar corfu-auto-prefix)
@@ -264,60 +269,239 @@ Use Emacs's file completion table, including directory continuation."
                      string predicate action))
                   :exclusive 'no)))))))
 
+(defun julia-workbench--signature-whitespace (signature &optional compact)
+  "Normalize SIGNATURE's whitespace outside strings, removing it if COMPACT."
+  (with-temp-buffer
+    (set-syntax-table julia-workbench-mode-syntax-table)
+    (insert signature)
+    (goto-char (point-min))
+    (while (re-search-forward "[ \t\n\r]+" nil t)
+      (unless (nth 3 (save-excursion (syntax-ppss (match-beginning 0))))
+        (replace-match (if compact "" " ") t t)))
+    (string-trim (buffer-string))))
+
+(defun julia-workbench--signatures-in-text (name text)
+  "Extract signatures of NAME from TEXT, including multiline and list entries.
+Ignore prose and call bodies.  NAME may be qualified, a macro or an operator."
+  (when (stringp text)
+    (with-temp-buffer
+      (set-syntax-table julia-workbench-mode-syntax-table)
+      (insert text)
+      (goto-char (point-min))
+      (let ((pattern (concat "^[ \t]*\\(?:[0-9]+\\.[ \t]+\\)?`?"
+                             "\\(?:[[:alnum:]_]+\\.\\)*"
+                             (regexp-quote (substring-no-properties name))
+                             "[ \t]*\\(?:{[^}\n]*}[ \t]*\\)?("))
+            signatures)
+        (while (re-search-forward pattern nil t)
+          (let* ((start (save-excursion
+                          (goto-char (match-beginning 0))
+                          (skip-chars-forward " \t0123456789.`") (point)))
+                 (end (ignore-errors (scan-sexps (1- (point)) 1))))
+            (when end
+              (goto-char end)
+              ;; Return annotations and `where' constraints follow the call.
+              (when (looking-at "[ \t]*\\(?:::[^`\n]+\\|where[ \t]+[^`\n]+\\)")
+                (goto-char (match-end 0)))
+              (let ((signature (concat
+                                (buffer-substring-no-properties start end)
+                                (car (split-string (buffer-substring-no-properties end (point))
+                                                   "[ \t]+\\(?:in\\|at\\)[ \t]+\\|[ \t]*=")))))
+                (push (julia-workbench--signature-whitespace signature) signatures)))))
+        (nreverse signatures)))))
+
+(defun julia-workbench--unique-signatures (signatures)
+  "Deduplicate SIGNATURES while keeping their order and displayed spelling."
+  (let ((seen (make-hash-table :test #'equal)))
+    (seq-filter
+     (lambda (signature)
+       ;; Return types do not distinguish Julia methods.  Server detail may
+       ;; append a synthetic `::Function' to an otherwise identical signature.
+       (let* ((key (with-temp-buffer
+                     (set-syntax-table julia-workbench-mode-syntax-table)
+                     (insert signature)
+                     (goto-char (point-min))
+                     (when (search-forward "(" nil t)
+                       (when-let* ((end (ignore-errors (scan-sexps (1- (point)) 1))))
+                         (goto-char end)
+                         (when (looking-at "::")
+                           (delete-region end (if (re-search-forward "[ \t]+where\\_>" nil t)
+                                                  (match-beginning 0) (point-max))))))
+                     (buffer-string)))
+              (key (julia-workbench--signature-whitespace key t)))
+         (unless (gethash key seen)
+           (puthash key t seen))))
+     signatures)))
+
+(defun julia-workbench--completion-signatures (candidate &optional detail text)
+  "Combine available signatures for CANDIDATE with server DETAIL and TEXT."
+  (let* ((name (substring-no-properties candidate))
+         (item (get-text-property 0 'eglot--lsp-item candidate))
+         (documentation (plist-get item :documentation)))
+    (julia-workbench--unique-signatures
+     (append
+      (julia-workbench--signatures-in-text name (julia-workbench--local-signatures name))
+      (julia-workbench--signatures-in-text
+       name (if (stringp documentation) documentation (plist-get documentation :value)))
+      (julia-workbench--signatures-in-text name text)
+      (julia-workbench--signatures-in-text name (plist-get item :detail))
+      (julia-workbench--signatures-in-text name detail)))))
+
 (defun julia-workbench--completion-signature (candidate properties)
-  "Return the available signature for CANDIDATE from CAPF PROPERTIES."
+  "Return combined signatures for CANDIDATE from CAPF PROPERTIES."
   (let* ((docsig (plist-get properties :company-docsig))
-         (signature (and docsig (funcall docsig candidate)))
-         (documentation (plist-get properties :company-doc-buffer)))
-    ;; Some servers use a bare kind as detail but put typed signatures in docs.
-    (or (julia-workbench--local-signatures (substring-no-properties candidate))
-        (and signature (string-match-p "[(:]" signature) signature)
-        (when documentation
-          (when-let* ((buffer (funcall documentation candidate)))
-            (with-current-buffer buffer
-              (save-excursion
-                (goto-char (point-min))
-                (when (re-search-forward
-                       (concat "^[ \t]*" (regexp-quote (substring-no-properties candidate))
-                               "[ \t]*(.*") nil t)
-                  (string-trim (match-string-no-properties 0)))))))
-        signature)))
+         (detail (and docsig (funcall docsig candidate)))
+         (documentation (plist-get properties :company-doc-buffer))
+         (buffer (and documentation (funcall documentation candidate)))
+         (text (and (buffer-live-p buffer) (with-current-buffer buffer (buffer-string))))
+         (signatures (julia-workbench--completion-signatures candidate detail text)))
+    (if signatures (string-join signatures "\n") detail)))
 
 (defun julia-workbench-semantic-completion-at-point ()
   "Adapt Eglot completion to display signatures on selection and acceptance.
 Preserve the original completion table, bounds, metadata and edit callback."
   (when-let* ((capf (eglot-completion-at-point)))
     (let* ((properties (nthcdr 3 capf))
+           (annotation (plist-get properties :annotation-function))
+           (docsig (plist-get properties :company-docsig))
            (documentation (plist-get properties :company-doc-buffer))
            (exit (plist-get properties :exit-function))
-           (source (current-buffer)))
+           (source (current-buffer))
+           (cache (make-hash-table :test #'equal)))
+      (cl-labels
+          ((entry (candidate &optional resolve)
+             (when (buffer-live-p source)
+               (with-current-buffer source
+                 (let* ((key (list (buffer-chars-modified-tick)
+                                   (substring-no-properties candidate)
+                                   (get-text-property 0 'eglot--lsp-item candidate)))
+                        (cached (gethash key cache)))
+                   (when (or (null cached) (and resolve (not (plist-get cached :resolved))))
+                     (let* ((detail (and resolve docsig (funcall docsig candidate)))
+                            (original (and resolve documentation (funcall documentation candidate)))
+                            (text (and (buffer-live-p original)
+                                       (with-current-buffer original (buffer-string)))))
+                       (setq cached (list :resolved resolve :text text
+                                          :signatures (julia-workbench--completion-signatures
+                                                       candidate detail text)))
+                       (puthash key cached cache)))
+                   cached)))))
       (append
        (seq-take capf 3)
        (list
+        :annotation-function
+        (lambda (candidate)
+          ;; Never resolve completion items or request docs for menu rows.
+          (let* ((original (and annotation (funcall annotation candidate)))
+                 (count (length (plist-get (entry candidate) :signatures))))
+            (concat original (when (> count 1) (format " [%d methods]" count)))))
         :company-doc-buffer
         (lambda (candidate)
           (when (buffer-live-p source)
             (with-current-buffer source
-              (let* ((signature (julia-workbench--completion-signature candidate properties))
-                     (original (and documentation (funcall documentation candidate)))
-                     (text (and original (with-current-buffer original (buffer-string)))))
-                (when (or signature text)
+              (let* ((data (entry candidate t))
+                     (signatures (plist-get data :signatures))
+                     (text (plist-get data :text)))
+                (when (or signatures text)
                   (with-current-buffer (get-buffer-create " *Julia completion documentation*")
                     (let ((inhibit-read-only t))
                       (erase-buffer)
-                      (when (and signature (not (and text (string-match-p (regexp-quote signature) text))))
-                        (insert signature "\n\n"))
+                      (when signatures
+                        (when (> (length signatures) 1)
+                          (insert (format "%d available methods\n\n" (length signatures))))
+                        (insert (string-join signatures "\n") "\n\n"))
                       (when text (insert text)))
                     (current-buffer)))))))
         :exit-function
         (lambda (candidate status)
           (when (buffer-live-p source)
             (with-current-buffer source
-              (when exit (funcall exit candidate status))
-              (when (memq status '(finished exact))
-                (when-let* ((signature (julia-workbench--completion-signature candidate properties)))
-                  (message "%s" signature)))))))
-       properties))))
+              (let ((signatures (and (memq status '(finished exact))
+                                     (plist-get (entry candidate) :signatures))))
+                (when exit (funcall exit candidate status))
+                (when signatures
+                  (message "%s%s" (car signatures)
+                           (if (cdr signatures)
+                               (format " (+%d methods)" (1- (length signatures))) ""))))))))
+       properties)))))
+
+(defvar-local julia-workbench--signature-positions nil
+  "Markers for available methods in a signature help buffer.")
+
+(defun julia-workbench-signature-next (&optional previous)
+  "Move to the next displayed method, or the previous one when PREVIOUS."
+  (interactive)
+  (let ((positions (if previous (reverse julia-workbench--signature-positions)
+                     julia-workbench--signature-positions)))
+    (when-let* ((position (or (seq-find (lambda (pos) (if previous (< pos (point)) (> pos (point))))
+                                       positions)
+                             (car positions))))
+      (goto-char position))))
+
+(defun julia-workbench-signature-previous ()
+  "Move to the previous displayed method."
+  (interactive)
+  (julia-workbench-signature-next t))
+
+(define-derived-mode julia-workbench-signature-mode special-mode "Julia Methods"
+  "Browse method signatures with active argument highlighting."
+  (setq-local truncate-lines nil))
+(keymap-set julia-workbench-signature-mode-map "n" #'julia-workbench-signature-next)
+(keymap-set julia-workbench-signature-mode-map "p" #'julia-workbench-signature-previous)
+
+(defun julia-workbench--show-signatures (result)
+  "Display method signatures and the active parameter from server RESULT."
+  (let* ((signatures (plist-get result :signatures))
+         (active (or (plist-get result :activeSignature) 0))
+         (parameter (or (plist-get result :activeParameter) 0)))
+    (if (zerop (length signatures)) (message "No method signatures at this position")
+      (with-current-buffer (get-buffer-create "*Julia Methods*")
+        (julia-workbench-signature-mode)
+        (let ((inhibit-read-only t) (index 0))
+          (erase-buffer)
+          (setq julia-workbench--signature-positions nil)
+          (insert (format "%d available methods\n\nn: next method   p: previous method   q: close\n\n"
+                          (length signatures)))
+          (mapc
+           (lambda (signature)
+             (push (copy-marker (point)) julia-workbench--signature-positions)
+             (insert (format "%s%d. " (if (= index active) "→ " "  ") (1+ index))
+                     (eglot--sig-info signature parameter nil) "\n\n")
+             (setq index (1+ index)))
+           signatures)
+          (setq julia-workbench--signature-positions (nreverse julia-workbench--signature-positions))
+          (goto-char (or (nth active julia-workbench--signature-positions) (point-min))))
+        (display-buffer (current-buffer))))))
+
+;;;###autoload
+(defun julia-workbench-signature-help ()
+  "Asynchronously browse available methods for the call at point.
+Invoke inside a call after `(' or `,'.  Use the existing Eglot server only.
+Ignore replies if the source position, contents or server have changed."
+  (interactive)
+  (require 'eglot)
+  (let ((server (eglot-current-server))
+        (source (current-buffer))
+        (position (point))
+        (tick (buffer-chars-modified-tick)))
+    (unless (and server (eglot-server-capable :signatureHelpProvider))
+      (user-error "Connect Eglot to a server with signature help first"))
+    (cl-labels ((current-p ()
+                  (and (buffer-live-p source)
+                       (with-current-buffer source
+                         (and (= position (point)) (= tick (buffer-chars-modified-tick))
+                              (eq server (eglot-current-server)))))))
+      (eglot--async-request
+       server :textDocument/signatureHelp (eglot--TextDocumentPositionParams)
+       :success-fn
+       (lambda (result)
+         (when (current-p)
+           (with-current-buffer source (julia-workbench--show-signatures result))))
+       :error-fn (lambda (error)
+                   (when (current-p) (message "Julia signature help failed: %s" error)))
+       :timeout-fn (lambda ()
+                     (when (current-p) (message "Julia signature help timed out")))
+       :timeout 10 :hint :julia-workbench-signature-help))))
 
 (defun julia-workbench--setup-completion-ui ()
   "Enable installed Corfu and automatic documentation locally when requested."
