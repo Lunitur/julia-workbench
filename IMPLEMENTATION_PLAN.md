@@ -50,6 +50,15 @@ recipe for the shared Doom configuration.
   Unicode positions, failures, cancellation and timeout cleanup. Four optional
   GUI fixtures show completion/documentation child frames and accept candidates
   in Emacs -Q and the user's current Doom/Corfu/Orderless setup.
+  Overloaded functions keep one candidate with deduplicated available signatures
+  from local declarations and server metadata/docs, a method-count annotation,
+  and cached candidate documentation. `C-c C-a` asynchronously opens structured
+  call signatures with active-argument highlighting and next/previous navigation.
+  Validation on 2026-10-06: 18 completion tests, 16 editing tests, 15 Eglot unit
+  tests, live Eglot overload/insertion/signature-browser checks, four Corfu GUI
+  fixtures, Unicode export assertions, clean package installation, strict byte
+  compilation and checkdoc. The running Doom session uses a separate pinned
+  GitHub checkout; activating these source changes there remains separate.
 - [x] 5. Asynchronous documentation UI, search and caching: bounded,
   project-aware standard-library helpers; named-symbol completion, literal
   docstring search, persistent help/history/buttons and explicit package scope.

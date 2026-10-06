@@ -128,8 +128,13 @@ buffer and invoking completion never launch Julia. Helpers and caches work
 locally; remote completion still needs a custom semantic server contact.
 
 With Eglot connected, semantic candidates, annotations, ordering, documentation
-and edit ranges come from its CAPF. A small adapter adds available signatures
-to candidate documentation and echoes them after acceptance. With the grammar,
+and edit ranges come from its CAPF. Each function remains one candidate; the
+adapter combines available method signatures from local declarations, server
+detail and documentation. It removes duplicates, lists the signatures together
+in the documentation popup, and adds `[N methods]` to the annotation when more
+than one signature is available. The count describes available signatures,
+not a complete runtime method inventory. After acceptance, the first signature
+and the number of additional methods appear in the minibuffer. With the grammar,
 local declarations provide typed signatures even when a function has no
 docstring. Unicode and path providers run before it and decline other contexts,
 preserving unrelated buffer-local CAPFs.
@@ -164,6 +169,14 @@ Package-name completion remains subject to the server: it did not offer the
 fixture package for `using WorkbenchEx`, although `using Base: sin` offered `sinh`.
 While filling function arguments, Eglot's ElDoc provider displays method
 signatures and highlights the active argument after `(` and `,`.
+Press `C-c C-a` (`julia-workbench-signature-help`) inside a call to open
+`*Julia Methods*` with all signatures returned by the server and the active
+argument highlighted. Use `n` and `p` to browse methods and `q` to close it.
+Request help again after editing arguments to refresh the list. This command
+uses the existing server asynchronously and ignores replies after source or
+server changes. Completion annotations make no additional server requests;
+selected-candidate documentation is cached for the completion session and
+invalidated when the source changes.
 
 ```sh
 make test-completion          # Unit tests; Julia and Corfu not required
